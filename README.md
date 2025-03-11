@@ -1,6 +1,6 @@
 # SuperSurf
 
-SuperSurf is a voice control application that enables hands-free operation of the Cursor IDE and other macOS applications, making coding more efficient and accessible. Using advanced voice recognition technology, it allows developers to execute commands, navigate code, and perform editing operations through voice commands.
+SuperSurf is a voice control application that enables hands-free operation of the Windsurf IDE and other macOS applications, making coding more efficient and accessible. Using advanced voice recognition technology, it allows developers to execute commands, navigate code, and perform editing operations through voice commands.
 
 ## Recent Improvements
 
@@ -78,7 +78,7 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 
 - macOS 10.9 or later
 - Python 3.9 or later
-- Cursor IDE or other text editor
+- Windsurf IDE or other text editor
 - Working microphone
 - Internet connection (for OpenAI API access)
 - OpenAI API key
@@ -87,14 +87,14 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/pedroarrudaa/SuperCursor.git
-   cd SuperCursor
+   git clone https://github.com/pedroarrudaa/SuperSurf.git
+   cd SuperSurf
    ```
 
 2. Create and activate a virtual environment:
    ```bash
-   python -m venv supercursor_env
-   source supercursor_env/bin/activate
+   python -m venv supersurf_env
+   source supersurf_env/bin/activate
    ```
 
 3. Install dependencies:
@@ -124,26 +124,26 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 
 ## Usage
 
-1. Click the SuperCursor icon in the menu bar
+1. Click the SuperSurf icon in the menu bar
 2. Select "Start Listening" to begin voice control
-3. Speak commands prefixed with "Cursor"
+3. Speak commands prefixed with "Surf"
 4. Monitor command status in the menu bar
 5. Use the Help menu for command references
 
 ### Example Commands
 ```
-"Cursor type hello world"     # Types "hello world"
-"Cursor find example"         # Searches for "example"
-"Cursor save"                 # Saves current file
-"Cursor go to line 42"        # Goes to line 42
-"Cursor select all"           # Selects all text
-"Cursor copy"                 # Copies selected text
-"Cursor paste"                # Pastes from clipboard
+"Surf type hello world"     # Types "hello world"
+"Surf find example"         # Searches for "example"
+"Surf save"                 # Saves current file
+"Surf go to line 42"        # Goes to line 42
+"Surf select all"           # Selects all text
+"Surf copy"                 # Copies selected text
+"Surf paste"                # Pastes from clipboard
 ```
 
 ## Configuration
 
-SuperCursor offers several configuration options:
+SuperSurf offers several configuration options:
 
 ### Audio Settings
 - Microphone selection
@@ -166,7 +166,7 @@ SuperCursor offers several configuration options:
 
 1. **Command Not Recognized**
    - Speak clearly and at a moderate pace
-   - Ensure "cursor" prefix is clearly pronounced
+   - Ensure "Surf" prefix is clearly pronounced
    - Check microphone input levels
    - Try alternative command variations
 
