@@ -866,7 +866,7 @@ class VoiceTranscriber:
                     # Only one successful transcription
                     return results[0]
                     
-                # Multiple results - select based on frequency and cursor presence
+                # Multiple results - select based on frequency and surf presence
                 best_result = self._select_best_ensemble_result(results)
                 return best_result
                 
@@ -930,12 +930,12 @@ class VoiceTranscriber:
     
     def _enhance_command_recognition(self, text):
         """Use fuzzy matching to improve command recognition"""
-        if "cursor" not in text.lower():
-            # Try to find cursor with fuzzy matching
+        if "surf" not in text.lower():
+            # Try to find surf with fuzzy matching
             words = text.lower().split()
-            if words and fuzz.ratio(words[0], "cursor") > 70:
-                # Replace the first word with "cursor" if it's similar
-                text = "cursor " + " ".join(words[1:])
+            if words and fuzz.ratio(words[0], "surf") > 70:
+                # Replace the first word with "surf" if it's similar
+                text = "surf " + " ".join(words[1:])
         
         # Look for key command phrases using fuzzy matching
         for command in KEY_COMMAND_PHRASES:

@@ -267,7 +267,7 @@ class EnsembleTranscriber:
         
         # Define different parameter sets to try
         param_sets = [
-            {"temperature": 0.0, "prompt": "Commands for IDE like cursor save, find, copy, undo."},
+            {"temperature": 0.0, "prompt": "Commands for IDE like surf save, find, copy, undo."},
             {"temperature": 0.2, "prompt": "The following audio contains programming editor commands."},
             {"temperature": 0.1, "prompt": "Voice commands for text editor: save, find, go to line, etc."}
         ]
@@ -357,7 +357,7 @@ class EnsembleTranscriber:
     def _select_best_result(self, results):
         """
         Select best result based on voting and heuristics.
-        For command detection, we prefer results containing the word "cursor" and
+        For command detection, we prefer results containing the word "surf" and
         then look for consensus among different variants.
         """
         if not results:
@@ -757,7 +757,7 @@ class VoiceTranscriber:
                 audio_file,
                 language="en",
                 temperature=float(os.getenv("WHISPER_TEMPERATURE", "0.0")),
-                initial_prompt="Voice commands for text editor. Prefix with 'cursor'.",
+                initial_prompt="Voice commands for text editor. Prefix with 'surf'.",
                 fp16=False,  # Explicitly use FP32 for CPU
             )
             
@@ -792,7 +792,7 @@ class VoiceTranscriber:
         try:
             # Directly use the model without spawning additional processes
             # This avoids the multiprocessing warning
-            initial_prompt = "Voice commands for text editor. Prefix with 'cursor'."
+            initial_prompt = "Voice commands for text editor. Prefix with 'surf'."
             result = self.model.transcribe(
                 audio_file,
                 language="en",
@@ -865,7 +865,7 @@ class VoiceTranscriber:
                     # Only one successful transcription
                     return results[0]
                     
-                # Multiple results - select based on frequency and cursor presence
+                # Multiple results - select based on frequency and surf presence
                 best_result = self._select_best_ensemble_result(results)
                 return best_result
                 
@@ -902,10 +902,10 @@ class VoiceTranscriber:
         if most_common[1] > 1:
             return most_common[0]
             
-        # No clear winner by frequency, prioritize results with "cursor"
-        cursor_results = [r for r in results if "cursor" in r.lower()]
-        if cursor_results:
-            return cursor_results[0]
+        # No clear winner by frequency, prioritize results with "surf"
+        surf_results = [r for r in results if "surf" in r.lower()]
+        if surf_results:
+            return surf_results[0]
             
         # Fall back to first result
         return results[0]

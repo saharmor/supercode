@@ -11,20 +11,20 @@ project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Import SuperCursor modules
+# Import SuperSurf modules
 try:
-    from super_cursor.transcription import VoiceTranscriber
-    from super_cursor.cursor_controller import CursorController
-    from super_cursor.utils import focus_cursor_app
-    from super_cursor.help_commands import show_commands_help
+    from super_surf.transcription import VoiceTranscriber
+    from super_surf.surf_controller import SurfController
+    from super_surf.utils import focus_surf_app
+    from super_surf.help_commands import show_commands_help
 except ImportError as e:
     print(f"Error in absolute import: {str(e)}")
     
     # Try relative import as fallback
     try:
         from .transcription import VoiceTranscriber
-        from .cursor_controller import CursorController
-        from .utils import focus_cursor_app
+        from .surf_controller import SurfController
+        from .utils import focus_surf_app
         from .help_commands import show_commands_help
     except ImportError as e:
         raise ImportError(f"Failed to import essential modules: {str(e)}")
@@ -32,18 +32,18 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 
-class SuperCursorApp(rumps.App):
+class SuperSurfApp(rumps.App):
     def __init__(self):
-        """Initialize the Super Cursor app"""
+        """Initialize the Super Surf app"""
         # Use only text name, no icon, no additional text
-        super(SuperCursorApp, self).__init__("SuperCursor", 
+        super(SuperSurfApp, self).__init__("SuperSurf", 
                                            icon=None,  # Explicitly set icon to None
                                            title=None,  # Don't use a template title
                                            quit_button=rumps.MenuItem("Quit", key="q"))
         
         # Initialize state
         self.is_listening = False
-        self.is_first_run = not os.path.exists(os.path.expanduser("~/.supercursor/has_run"))
+        self.is_first_run = not os.path.exists(os.path.expanduser("~/.SuperSurf/has_run"))
         self.listen_thread = None
         
         # Create menu items with simple structure
@@ -87,7 +87,7 @@ class SuperCursorApp(rumps.App):
             print(f"Error initializing transcriber: {e}")
             self.transcriber = None
             
-        self.controller = CursorController()
+        self.controller = SurfController()
         
         # Show first-run tutorial if needed
         if self.is_first_run:
@@ -98,17 +98,17 @@ class SuperCursorApp(rumps.App):
             timer.start()
             
             # Create a directory to store app data if it doesn't exist
-            os.makedirs(os.path.expanduser("~/.supercursor"), exist_ok=True)
+            os.makedirs(os.path.expanduser("~/.SuperSurf"), exist_ok=True)
             
             # Mark as run
-            with open(os.path.expanduser("~/.supercursor/has_run"), "w") as f:
+            with open(os.path.expanduser("~/.SuperSurf/has_run"), "w") as f:
                 f.write("1")
 
     def show_first_run_tutorial(self, _=None):
         """Show a welcome and tutorial for first-time users"""
         welcome_response = rumps.alert(
-            title="Welcome to SuperCursor!",
-            message="SuperCursor allows you to control Cursor IDE with voice commands.\n\nWould you like to take a quick tour of the features?",
+            title="Welcome to SuperSurf!",
+            message="SuperSurf allows you to control Windsurf IDE with voice commands.\n\nWould you like to take a quick tour of the features?",
             ok="Yes, show me around",
             cancel="Maybe later"
         )
@@ -117,9 +117,9 @@ class SuperCursorApp(rumps.App):
             self.show_tutorial()
         else:
             rumps.notification(
-                "SuperCursor", 
+                "SuperSurf", 
                 "Ready to use", 
-                "Click the SuperCursor icon to start using voice commands"
+                "Click the SuperSurf icon to start using voice commands"
             )
 
     def toggle_listening(self, sender):
@@ -127,13 +127,13 @@ class SuperCursorApp(rumps.App):
         if self.is_listening:
             self.stop_listening()
             sender.title = "Start Listening"
-            # Just set the title to SuperCursor, no additional text
-            self.title = "SuperCursor"
+            # Just set the title to SuperSurf, no additional text
+            self.title = "SuperSurf"
         else:
             self.start_listening()
             sender.title = "Stop Listening"
-            # Use a different colored title but keep just SuperCursor
-            self.title = "SuperCursor"
+            # Use a different colored title but keep just SuperSurf
+            self.title = "SuperSurf"
     
     def start_listening(self):
         """Start listening for voice commands with enhanced feedback"""
@@ -145,10 +145,10 @@ class SuperCursorApp(rumps.App):
         self.listen_thread.daemon = True
         self.listen_thread.start()
         
-        rumps.notification("SuperCursor", "Voice Control Active", "Say commands starting with 'Cursor'")
+        rumps.notification("SuperSurf", "Voice Control Active", "Say commands starting with 'Surf'")
         
-        # Keep title clean - just SuperCursor
-        self.title = "SuperCursor"
+        # Keep title clean - just SuperSurf
+        self.title = "SuperSurf"
     
     def stop_listening(self):
         """Stop listening for voice commands with enhanced feedback"""
@@ -159,17 +159,17 @@ class SuperCursorApp(rumps.App):
         if self.listen_thread:
             self.listen_thread.join(timeout=1.0)
             
-        rumps.notification("SuperCursor", "Voice Control Paused", "Click 'Start Listening' to resume")
+        rumps.notification("SuperSurf", "Voice Control Paused", "Click 'Start Listening' to resume")
         
-        # Keep title clean - just SuperCursor
-        self.title = "SuperCursor"
+        # Keep title clean - just SuperSurf
+        self.title = "SuperSurf"
 
     def process_voice_commands(self):
         """Process voice commands in a loop"""
         while self.is_listening:
             try:
                 print("\n--- New recording session ---")
-                self.title = "SuperCursor"  # Keep title clean
+                self.title = "SuperSurf"  # Keep title clean
                 
                 # Record audio
                 try:
@@ -181,7 +181,7 @@ class SuperCursorApp(rumps.App):
                     time.sleep(1)
                     continue
                 
-                self.title = "SuperCursor"  # Keep title clean
+                self.title = "SuperSurf"  # Keep title clean
                 try:
                     transcription = self.transcriber.transcribe_audio()
                 except Exception as e:
@@ -193,23 +193,23 @@ class SuperCursorApp(rumps.App):
                     print(f"Processing transcription: '{transcription}'")
                     
                     # Check for help command
-                    if "cursor help" in transcription.lower():
+                    if "surf help" in transcription.lower():
                         try:
                             self.show_commands_help()
                         except Exception as e:
                             print(f"Error showing help: {e}")
                         continue
                     
-                    # Process the command if it contains the keyword "cursor"
+                    # Process the command if it contains the keyword "surf"
                     words = transcription.lower().split()
-                    if "cursor" in words:
-                        self.title = "SuperCursor"  # Keep title clean
+                    if "surf" in words:
+                        self.title = "SuperSurf"  # Keep title clean
                         
-                        # Try to focus the Cursor IDE window
+                        # Try to focus the Windsurf IDE window
                         try:
-                            focus_cursor_app()
+                            focus_surf_app()
                         except Exception as e:
-                            print(f"Error focusing Cursor app: {e}")
+                            print(f"Error focusing Windsurf app: {e}")
                         
                         # Process the command
                         try:
@@ -224,11 +224,11 @@ class SuperCursorApp(rumps.App):
                         except Exception as e:
                             print(f"Error providing feedback: {e}")
                     else:
-                        print(f"Ignoring transcription as it doesn't contain 'cursor': '{transcription}'")
-                        self.title = "SuperCursor"  # Reset menu bar icon
+                        print(f"Ignoring transcription as it doesn't contain 'surf': '{transcription}'")
+                        self.title = "SuperSurf"  # Reset menu bar icon
                 else:
                     print("No transcription received")
-                    self.title = "SuperCursor"  # Reset menu bar icon
+                    self.title = "SuperSurf"  # Reset menu bar icon
                 
                 # Small delay between recording sessions
                 time.sleep(1)
@@ -245,19 +245,19 @@ class SuperCursorApp(rumps.App):
             rumps.notification("Command Executed", 
                              command, 
                              "Executing command...")
-            self.title = "SuperCursor"  # Keep title clean
+            self.title = "SuperSurf"  # Keep title clean
         else:
             # Show failure notification
             rumps.notification("Command Not Recognized", 
                              command, 
                              "Please try again.")
-            self.title = "SuperCursor"  # Keep title clean
+            self.title = "SuperSurf"  # Keep title clean
             
     def test_keyboard(self, _):
         """Test keyboard functionality"""
-        focus_cursor_app()
+        focus_surf_app()
         self.controller.test_keyboard()
-        rumps.notification("SuperCursor", "Keyboard Test", "Sent test keyboard input")
+        rumps.notification("SuperSurf", "Keyboard Test", "Sent test keyboard input")
     
     def show_commands_help(self, _=None):
         """Show all available commands"""
@@ -268,12 +268,12 @@ class SuperCursorApp(rumps.App):
         basic_commands = """
 BASIC COMMANDS
 
-- "Cursor type [text]" - Type specified text
-- "Cursor enter" - Press Enter key
-- "Cursor tab" - Press Tab key
-- "Cursor save" - Save current file (Cmd+S)
-- "Cursor undo" - Undo last action (Cmd+Z)
-- "Cursor delete" - Delete current line
+- "Surf type [text]" - Type specified text
+- "Surf enter" - Press Enter key
+- "Surf tab" - Press Tab key
+- "Surf save" - Save current file (Cmd+S)
+- "Surf undo" - Undo last action (Cmd+Z)
+- "Surf delete" - Delete current line
         """
         rumps.alert(title="Basic Commands", message=basic_commands, ok="Got it!")
     
@@ -282,26 +282,26 @@ BASIC COMMANDS
         navigation_commands = """
 NAVIGATION COMMANDS
 
-- "Cursor find [text]" - Search for text
-- "Cursor next" - Go to next result
-- "Cursor previous" - Go to previous result
-- "Cursor go to line [number]" - Go to specific line
-- "Cursor top" - Go to file top
-- "Cursor bottom" - Go to file bottom
+- "Surf find [text]" - Search for text
+- "Surf next" - Go to next result
+- "Surf previous" - Go to previous result
+- "Surf go to line [number]" - Go to specific line
+- "Surf top" - Go to file top
+- "Surf bottom" - Go to file bottom
         """
         rumps.alert(title="Navigation Commands", message=navigation_commands, ok="Got it!")
     
     def show_how_to_use(self, _):
         """Show how to use information"""
         how_to_use = """
-HOW TO USE SUPERCURSOR
+HOW TO USE SuperSurf
 
 1. Click "Start Listening" in the menu
-2. Speak commands beginning with "Cursor"
+2. Speak commands beginning with "Surf"
 3. The app will transcribe and execute your commands
 4. To stop, click "Stop Listening" in the menu
 
-Example: Say "Cursor type hello world" to type "hello world"
+Example: Say "Surf type hello world" to type "hello world"
 
 Tips:
 - Speak clearly and at a normal pace
@@ -313,12 +313,12 @@ Tips:
     def show_about(self, _):
         """Show about information"""
         about = """
-ABOUT SUPERCURSOR
+ABOUT SuperSurf
 
 Version: 0.1.0
-A voice control application for Cursor IDE
+A voice control application for Windsurf IDE
 
-SuperCursor lets you control Cursor IDE using voice commands,
+SuperSurf lets you control Windsurf IDE using voice commands,
 making your coding experience more efficient and hands-free.
 
 Features:
@@ -328,7 +328,7 @@ Features:
 - Noise reduction
 - Support for non-native English speakers
         """
-        rumps.alert(title="About SuperCursor", message=about, ok="Got it!")
+        rumps.alert(title="About SuperSurf", message=about, ok="Got it!")
     
     def show_editing_commands(self, _):
         """Show editing-specific commands"""
@@ -336,24 +336,24 @@ Features:
 EDITING COMMANDS
 
 Text Selection:
-• "Cursor select all" - Select all text (⌘A)
-• "Cursor select line" - Select current line
+• "Surf select all" - Select all text (⌘A)
+• "Surf select line" - Select current line
 
 Deletion:
-• "Cursor delete" - Delete current line
-• "Cursor backspace" - Delete previous character
+• "Surf delete" - Delete current line
+• "Surf backspace" - Delete previous character
 
 Formatting:
-• "Cursor format" - Format current file
-• "Cursor indent" - Indent current line
-• "Cursor outdent" - Outdent current line
-• "Cursor comment" - Toggle comment on current line
+• "Surf format" - Format current file
+• "Surf indent" - Indent current line
+• "Surf outdent" - Outdent current line
+• "Surf comment" - Toggle comment on current line
 
 Basic Editing:
-• "Cursor duplicate" - Duplicate current line
-• "Cursor cut" - Cut selection (⌘X)
-• "Cursor copy" - Copy selection (⌘C)
-• "Cursor paste" - Paste from clipboard (⌘V)
+• "Surf duplicate" - Duplicate current line
+• "Surf cut" - Cut selection (⌘X)
+• "Surf copy" - Copy selection (⌘C)
+• "Surf paste" - Paste from clipboard (⌘V)
         """
         rumps.alert(title="Editing Commands", message=editing_commands, ok="Close")
 
@@ -363,19 +363,19 @@ Basic Editing:
 IDE COMMANDS
 
 Panels:
-• "Cursor terminal" - Toggle terminal panel
-• "Cursor explorer" - Toggle file explorer
-• "Cursor problems" - Toggle problems panel
+• "Surf terminal" - Toggle terminal panel
+• "Surf explorer" - Toggle file explorer
+• "Surf problems" - Toggle problems panel
 
 Views:
-• "Cursor split" - Split editor
-• "Cursor close" - Close current file
-• "Cursor new file" - Create new file
+• "Surf split" - Split editor
+• "Surf close" - Close current file
+• "Surf new file" - Create new file
 
 Features:
-• "Cursor run" - Run current file
-• "Cursor debug" - Debug current file
-• "Cursor git" - Show git commands
+• "Surf run" - Run current file
+• "Surf debug" - Debug current file
+• "Surf git" - Show git commands
         """
         rumps.alert(title="IDE Commands", message=ide_commands, ok="Close")
         
@@ -383,7 +383,7 @@ Features:
         """Open simplified settings window with functional options"""
         # Create a settings window with the most important options
         response = rumps.alert(
-            title="SuperCursor Settings",
+            title="SuperSurf Settings",
             message="Select a setting to configure:",
             ok="Audio",
             cancel="Cancel",
@@ -421,7 +421,7 @@ To change microphone, use System Preferences."""
         """Configure command settings"""
         # Create a simple command settings dialog
         msg = """Current Settings:
-• Voice Command Prefix: "Cursor"
+• Voice Command Prefix: "Surf"
 • Recognition: Optimized with enhanced accuracy
 • Fuzzy Matching: Enabled
 
@@ -444,7 +444,7 @@ Available Command Categories:
     def check_microphone(self, _=None):
         """Check microphone status and provide feedback"""
         # Display checking notification
-        rumps.notification("SuperCursor", "Testing Microphone", "Recording test audio...")
+        rumps.notification("SuperSurf", "Testing Microphone", "Recording test audio...")
         
         try:
             # Use the transcriber to test the microphone
@@ -462,7 +462,7 @@ Active Device: {device_info}
 The microphone is working properly.
 
 For best recognition results:
-• Speak clearly with a pause after "Cursor"
+• Speak clearly with a pause after "Surf"
 • Reduce background noise
 • Use simple, direct command phrases"""
             
@@ -477,21 +477,21 @@ Please check:
 • System Preferences → Security & Privacy → Microphone
 • Other apps using the microphone
 • Hardware connections
-• Try restarting SuperCursor"""
+• Try restarting SuperSurf"""
             
             rumps.alert(title="Microphone Check", message=error_msg, ok="Got it")
             
     def show_tutorial(self, _=None):
         """Show a tutorial for users"""
         tutorial_steps = [
-            "Welcome to SuperCursor! This tutorial will help you get started.",
-            "SuperCursor lets you control Cursor IDE with your voice commands.",
-            "To start, click on the SuperCursor icon in the menu bar and select 'Start Listening'.",
-            "Try saying 'Cursor type hello world' to type text.",
-            "For code editing, try commands like 'Cursor select all' or 'Cursor format'.",
-            "For navigation, use commands like 'Cursor find text' or 'Cursor go to line 42'.",
+            "Welcome to SuperSurf! This tutorial will help you get started.",
+            "SuperSurf lets you control Windsurf IDE with your voice commands.",
+            "To start, click on the SuperSurf icon in the menu bar and select 'Start Listening'.",
+            "Try saying 'Surf type hello world' to type text.",
+            "For code editing, try commands like 'Surf select all' or 'Surf format'.",
+            "For navigation, use commands like 'Surf find text' or 'Surf go to line 42'.",
             "You can find all available commands in the command menus.",
-            "For help at any time, say 'Cursor help' or use the Help menu.",
+            "For help at any time, say 'Surf help' or use the Help menu.",
             "Let's get started!"
         ]
         
@@ -510,7 +510,7 @@ Please check:
         # Create a window to inform the user that API key is no longer needed
         api_key_window = rumps.Window(
             title="Local Whisper Information",
-            message="SuperCursor uses the local Whisper model for transcription.\n\nNo API key or internet connection needed for voice recognition.",
+            message="SuperSurf uses the local Whisper model for transcription.\n\nNo API key or internet connection needed for voice recognition.",
             ok="Great!",
             cancel=None
         )

@@ -14,8 +14,8 @@ if project_root not in sys.path:
 # Import SuperSurf modules
 try:
     from super_surf.transcription import VoiceTranscriber
-    from super_surf.cursor_controller import CursorController
-    from super_surf.utils import focus_cursor_app
+    from super_surf.surf_controller import SurfController
+    from super_surf.utils import focus_surf_app
     from super_surf.help_commands import show_commands_help
 except ImportError as e:
     print(f"Error in absolute import: {str(e)}")
@@ -23,8 +23,8 @@ except ImportError as e:
     # Try relative import as fallback
     try:
         from .transcription import VoiceTranscriber
-        from .cursor_controller import CursorController
-        from .utils import focus_cursor_app
+        from .surf_controller import SurfController
+        from .utils import focus_surf_app
         from .help_commands import show_commands_help
     except ImportError as e:
         raise ImportError(f"Failed to import essential modules: {str(e)}")
@@ -87,7 +87,7 @@ class SuperSurfApp(rumps.App):
             print(f"Error initializing transcriber: {e}")
             self.transcriber = None
             
-        self.controller = CursorController()
+        self.controller = SurfController()
         
         # Show first-run tutorial if needed
         if self.is_first_run:
@@ -108,7 +108,7 @@ class SuperSurfApp(rumps.App):
         """Show a welcome and tutorial for first-time users"""
         welcome_response = rumps.alert(
             title="Welcome to SuperSurf!",
-            message="SuperSurf allows you to control Cursor IDE with voice commands.\n\nWould you like to take a quick tour of the features?",
+            message="SuperSurf allows you to control Windsurf IDE with voice commands.\n\nWould you like to take a quick tour of the features?",
             ok="Yes, show me around",
             cancel="Maybe later"
         )
@@ -145,7 +145,7 @@ class SuperSurfApp(rumps.App):
         self.listen_thread.daemon = True
         self.listen_thread.start()
         
-        rumps.notification("SuperSurf", "Voice Control Active", "Say commands starting with 'Cursor'")
+        rumps.notification("SuperSurf", "Voice Control Active", "Say commands starting with 'Surf'")
         
         # Keep title clean - just SuperSurf
         self.title = "SuperSurf"
@@ -193,23 +193,23 @@ class SuperSurfApp(rumps.App):
                     print(f"Processing transcription: '{transcription}'")
                     
                     # Check for help command
-                    if "cursor help" in transcription.lower():
+                    if "surf help" in transcription.lower():
                         try:
                             self.show_commands_help()
                         except Exception as e:
                             print(f"Error showing help: {e}")
                         continue
                     
-                    # Process the command if it contains the keyword "cursor"
+                    # Process the command if it contains the keyword "surf"
                     words = transcription.lower().split()
-                    if "cursor" in words:
+                    if "surf" in words:
                         self.title = "SuperSurf"  # Keep title clean
                         
-                        # Try to focus the Cursor IDE window
+                        # Try to focus the Windsurf IDE window
                         try:
-                            focus_cursor_app()
+                            focus_surf_app()
                         except Exception as e:
-                            print(f"Error focusing Cursor app: {e}")
+                            print(f"Error focusing Windsurf app: {e}")
                         
                         # Process the command
                         try:
@@ -224,7 +224,7 @@ class SuperSurfApp(rumps.App):
                         except Exception as e:
                             print(f"Error providing feedback: {e}")
                     else:
-                        print(f"Ignoring transcription as it doesn't contain 'cursor': '{transcription}'")
+                        print(f"Ignoring transcription as it doesn't contain 'surf': '{transcription}'")
                         self.title = "SuperSurf"  # Reset menu bar icon
                 else:
                     print("No transcription received")
@@ -255,9 +255,9 @@ class SuperSurfApp(rumps.App):
             
     def test_keyboard(self, _):
         """Test keyboard functionality"""
-        focus_cursor_app()
+        focus_surf_app()
         self.controller.test_keyboard()
-        rumps.notification("SuperCursor", "Keyboard Test", "Sent test keyboard input")
+        rumps.notification("SuperSurf", "Keyboard Test", "Sent test keyboard input")
     
     def show_commands_help(self, _=None):
         """Show all available commands"""
@@ -421,7 +421,7 @@ To change microphone, use System Preferences."""
         """Configure command settings"""
         # Create a simple command settings dialog
         msg = """Current Settings:
-• Voice Command Prefix: "Cursor"
+• Voice Command Prefix: "Surf"
 • Recognition: Optimized with enhanced accuracy
 • Fuzzy Matching: Enabled
 
@@ -444,7 +444,7 @@ Available Command Categories:
     def check_microphone(self, _=None):
         """Check microphone status and provide feedback"""
         # Display checking notification
-        rumps.notification("SuperCursor", "Testing Microphone", "Recording test audio...")
+        rumps.notification("SuperSurf", "Testing Microphone", "Recording test audio...")
         
         try:
             # Use the transcriber to test the microphone
@@ -462,7 +462,7 @@ Active Device: {device_info}
 The microphone is working properly.
 
 For best recognition results:
-• Speak clearly with a pause after "Cursor"
+• Speak clearly with a pause after "Surf"
 • Reduce background noise
 • Use simple, direct command phrases"""
             
@@ -477,7 +477,7 @@ Please check:
 • System Preferences → Security & Privacy → Microphone
 • Other apps using the microphone
 • Hardware connections
-• Try restarting SuperCursor"""
+• Try restarting SuperSurf"""
             
             rumps.alert(title="Microphone Check", message=error_msg, ok="Got it")
             
@@ -510,7 +510,7 @@ Please check:
         # Create a window to inform the user that API key is no longer needed
         api_key_window = rumps.Window(
             title="Local Whisper Information",
-            message="SuperCursor uses the local Whisper model for transcription.\n\nNo API key or internet connection needed for voice recognition.",
+            message="SuperSurf uses the local Whisper model for transcription.\n\nNo API key or internet connection needed for voice recognition.",
             ok="Great!",
             cancel=None
         )

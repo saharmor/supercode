@@ -1,4 +1,4 @@
-"""SuperSurf package for voice-controlled cursor navigation."""
+"""SuperSurf package for voice-controlled surf navigation."""
 
 __version__ = "0.1.0"
 

@@ -49,7 +49,7 @@ def load_config():
         # Default configuration
         default_config = {
             "model_size": "base",
-            "activation_phrase": "cursor",
+            "activation_phrase": "surf",
             "hotkey": "cmd+shift+space"
         }
         save_config(default_config)
@@ -58,7 +58,7 @@ def load_config():
     with open(config_file, "r") as f:
         return json.load(f)
 
-def is_cursor_running():
+def is_surf_running():
     """
     Check if Windsurf IDE is running
     
@@ -80,10 +80,10 @@ def focus_windsurf_app():
         bool: True if successful, False otherwise
     """
     try:
-        subprocess.run(["osascript", "-e", 'tell application "Cursor" to activate'])
+        subprocess.run(["osascript", "-e", 'tell application "Surf" to activate'])
         return True
     except Exception as e:
-        print(f"Error focusing Cursor app: {e}")
+        print(f"Error focusing Windsurf app: {e}")
         return False
 
 def validate_audio_device(device_index):
