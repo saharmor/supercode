@@ -1,0 +1,25 @@
+[MASTER]
+# Ignore files in the old_versions directory
+ignore=old_versions
+
+[MESSAGES CONTROL]
+# Disable specific messages
+disable=
+    import-error,
+    missing-module-docstring
+
+[TYPECHECK]
+# List of members which are set dynamically and missed by pylint inference system
+generated-members=numpy.*, torch.*
+
+[FORMAT]
+# Maximum line length
+max-line-length=100
+
+[SIMILARITIES]
+# Minimum lines number of a similarity
+min-similarity-lines=10
+
+[VARIABLES]
+# Tells whether we should check for unused import in __init__ files
+init-import=no 

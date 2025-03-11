@@ -10,6 +10,14 @@ setup(
         "pynput",
         "pyobjc",
         "rumps",
+        "python-dotenv",
+        "pydub",
+        "rapidfuzz",
+        "Levenshtein",
+        "librosa",
+        "webrtcvad",
+        "scipy",
+        "numpy",
     ],
     entry_points={
         "console_scripts": [
