@@ -64,7 +64,7 @@ class SuperSurfApp(rumps.App):
         # Initialize the transcriber
         try:
             # Use environment variables for configuration
-            model_name = os.getenv("WHISPER_MODEL_SIZE", "base")
+            model_name = os.getenv("LOCAL_WHISPER_MODEL", "base")
             use_ensemble = os.getenv("USE_ENSEMBLE", "True").lower() == "true"
             
             # Get device index from environment
@@ -106,19 +106,23 @@ class SuperSurfApp(rumps.App):
 
     def show_first_run_tutorial(self, _=None):
         """Show a welcome and tutorial for first-time users"""
-        welcome_response = rumps.alert(
-            title="Welcome to SuperSurf!",
-            message="SuperSurf allows you to control Windsurf IDE with voice commands.\n\nWould you like to take a quick tour of the features?",
-            ok="Yes, show me around",
-            cancel="Maybe later"
+        # Note: rumps.alert must be called from the main thread
+        # We'll use rumps.notification instead which is safer for thread usage
+        rumps.notification(
+            title="Welcome to SuperSurf!", 
+            subtitle="New Voice Control Tool",
+            message="Click the SuperSurf menu bar icon to get started"
         )
         
-        if welcome_response == 1:  # User clicked "Yes"
-            self.show_tutorial()
-        else:
-            rumps.notification(
-                "SuperSurf", 
-                "Ready to use", 
+        # Schedule the tutorial to appear after a delay using rumps' built-in timer
+        # which runs on the main thread
+        rumps.timer.schedule(lambda _: self.show_delayed_tutorial(), 2)
+        
+    def show_delayed_tutorial(self):
+        """Show tutorial after a delay to ensure it runs on the main thread"""
+        rumps.notification(
+            "SuperSurf", 
+            "Ready to use", 
                 "Click the SuperSurf icon to start using voice commands"
             )
 
@@ -382,21 +386,26 @@ Features:
     def open_settings(self, _):
         """Open simplified settings window with functional options"""
         # Create a settings window with the most important options
+        # Note: rumps.alert only accepts a single string for 'other', not a list
         response = rumps.alert(
             title="SuperSurf Settings",
             message="Select a setting to configure:",
             ok="Audio",
             cancel="Cancel",
-            other=["Commands", "Test Mic"]
+            other="Commands"
         )
+        
+        # For the Test Mic option, we'll add a separate button in the UI
+        # or provide it in a submenu
         
         # Handle response based on button clicked
         if response == 1:  # Audio button clicked
             self.configure_audio()
         elif response == 2:  # Commands button clicked
             self.configure_commands()
-        elif response == 3:  # Test Mic button clicked
-            self.check_microphone()
+        
+        # Add a direct way to test the microphone
+        self.menu.insert_after("Settings", rumps.MenuItem("Test Microphone", callback=self.check_microphone))
     
     def configure_audio(self):
         """Configure audio settings"""

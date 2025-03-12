@@ -9,6 +9,7 @@ import sys
 import time
 import logging
 import traceback
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,13 +31,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger('SuperSurfMac')
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="SuperSurf Mac Application")
+    parser.add_argument("--use-openai-api", action="store_true",
+                        help="Use OpenAI's Whisper API instead of local model")
+    parser.add_argument("--openai-model", type=str, default="whisper-1",
+                        help="OpenAI Whisper model to use (default: whisper-1)")
+    return parser.parse_args()
+
 def main():
     """Initialize and start the SuperSurf Mac application"""
     try:
+        # Parse command line arguments
+        args = parse_arguments()
+        
         # Load environment variables
         logger.info("Loading environment variables...")
         dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
         load_dotenv(dotenv_path)
+        
+        # Override environment variables with command line arguments if provided
+        if args.use_openai_api:
+            os.environ["USE_OPENAI_API"] = "true"
+            logger.info("Using OpenAI Whisper API (command line override)")
+        
+        if args.openai_model:
+            os.environ["OPENAI_WHISPER_MODEL"] = args.openai_model
+            logger.info(f"Using OpenAI model: {args.openai_model} (command line override)")
         
         # Basic configuration
         logger.info("Starting SuperSurf Mac standard version")

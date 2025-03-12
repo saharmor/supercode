@@ -6,18 +6,17 @@ import wave
 import pyaudio
 import whisper  # Import the local Whisper model
 import numpy as np
-import sys
 from rapidfuzz import fuzz
 from typing import Dict, List, Tuple, Optional, Callable, Union
 import logging
 import librosa
-import scipy.signal
 import webrtcvad
 import struct
 from scipy.io import wavfile
 import concurrent.futures
 import collections
 from dotenv import load_dotenv
+import openai  # Import OpenAI for Whisper API
 
 try:
     from pydub import AudioSegment
@@ -32,7 +31,7 @@ except ImportError:
         def from_file(file, format=None):
             return file
     
-    logging.warning("pydub não encontrado. Usando implementação de fallback limitada.")
+    logging.warning("pydub not found. Using limited fallback implementation.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -434,6 +433,21 @@ class VoiceTranscriber:
         load_dotenv()
         model_name = os.getenv("WHISPER_MODEL_SIZE", model_name)
         
+        # Check if we should use OpenAI's Whisper API
+        self.use_openai_api = os.getenv("USE_OPENAI_API", "False").lower() == "true"
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_whisper_model = os.getenv("OPENAI_WHISPER_MODEL", "whisper-1")
+        
+        # Validate OpenAI API usage
+        if self.use_openai_api and not self.openai_api_key:
+            logger.warning("USE_OPENAI_API is set to True but no OPENAI_API_KEY found. Falling back to local model.")
+            self.use_openai_api = False
+        
+        if self.use_openai_api:
+            logger.info(f"Using OpenAI Whisper API with model: {self.openai_whisper_model}")
+            # Configure the OpenAI client
+            openai.api_key = self.openai_api_key
+        
         # Set up logging
         log_level = os.getenv("LOG_LEVEL", "INFO")
         numeric_level = getattr(logging, log_level.upper(), logging.INFO)
@@ -747,27 +761,32 @@ class VoiceTranscriber:
         # Just return original file path directly
         return audio_file
     
-    def _transcribe_audio(self, audio_file):
-        """Transcribe audio file to text using Whisper model"""
-        # Skip ensemble mode for stability
-        try:
-            # Direct transcription with minimal parameters for speed
-            logger.info("Starting transcription with Whisper...")
-            result = self.model.transcribe(
-                audio_file,
-                language="en",
-                temperature=float(os.getenv("WHISPER_TEMPERATURE", "0.0")),
-                initial_prompt="Voice commands for text editor. Prefix with 'surf'.",
-                fp16=False,  # Explicitly use FP32 for CPU
-            )
+    def transcribe_audio(self):
+        """Public method to return the last transcription result
+        
+        Returns:
+            str: The transcribed text from the last recording, or None if no transcription available
+        """
+        # Simply return the last transcription result that was saved during stop_recording
+        if hasattr(self, 'last_transcription_result') and self.last_transcription_result:
+            return self.last_transcription_result
+        else:
+            logger.warning("No transcription result available")
+            return None
             
-            # Process and return the transcription
-            if not result or not result.get("text"):
+    def _transcribe_audio(self, audio_file):
+        """Transcribe audio file to text using either local Whisper model or OpenAI API"""
+        try:
+            # Choose between OpenAI API or local model
+            if self.use_openai_api:
+                transcript = self._transcribe_with_openai_api(audio_file)
+            else:
+                transcript = self._transcribe_with_local_model(audio_file)
+            
+            if not transcript:
                 logger.warning("Empty transcription result")
                 return ""
             
-            # Get the text from the result
-            transcript = result["text"].strip()
             logger.info(f"Raw transcription: '{transcript}'")
             
             # Apply corrections from the correction dictionary
@@ -780,6 +799,56 @@ class VoiceTranscriber:
                 
         except Exception as e:
             logger.error(f"Transcription failed: {str(e)}")
+            return ""
+    
+    def _transcribe_with_local_model(self, audio_file):
+        """Transcribe using the local Whisper model"""
+        try:
+            # Direct transcription with minimal parameters for speed
+            logger.info("Starting transcription with local Whisper model...")
+            result = self.model.transcribe(
+                audio_file,
+                language="en",
+                temperature=float(os.getenv("WHISPER_TEMPERATURE", "0.0")),
+                initial_prompt="Voice commands for text editor. Prefix with 'surf'.",
+                fp16=False,  # Explicitly use FP32 for CPU
+            )
+            
+            # Process and return the transcription
+            if not result or not result.get("text"):
+                return ""
+            
+            # Get the text from the result
+            return result["text"].strip()
+            
+        except Exception as e:
+            logger.error(f"Local transcription failed: {str(e)}")
+            return ""
+    
+    def _transcribe_with_openai_api(self, audio_file):
+        """Transcribe using OpenAI's Whisper API"""
+        try:
+            logger.info("Starting transcription with OpenAI Whisper API...")
+            
+            # Open the audio file in binary mode
+            with open(audio_file, "rb") as audio_data:
+                # Call the OpenAI API
+                response = openai.audio.transcriptions.create(
+                    model=self.openai_whisper_model,
+                    file=audio_data,
+                    language="en",
+                    prompt="Voice commands for text editor. Prefix with 'surf'.",
+                    response_format="text"
+                )
+            
+            # The response is already the transcribed text
+            if response:
+                return response.strip()
+            else:
+                return ""
+                
+        except Exception as e:
+            logger.error(f"OpenAI API transcription failed: {str(e)}")
             return ""
 
     def _safe_transcribe(self, audio_file):
@@ -1043,6 +1112,12 @@ class VoiceTranscriber:
     
     def _load_model(self, model_name):
         """Load the Whisper model with error handling and fallbacks"""
+        # Skip loading the local model if we're using the OpenAI API
+        if self.use_openai_api:
+            logger.info("Using OpenAI Whisper API - skipping local model loading")
+            self.model = None
+            return True
+            
         try:
             logger.info(f"Loading local Whisper model: {model_name}")
             

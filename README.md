@@ -13,12 +13,18 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 - Enhanced silence detection with configurable thresholds
 - Added real-time audio level monitoring during recording
 
-### Local Speech Recognition
-- Now uses local Whisper model for transcription (no internet required)
-- Removed dependency on OpenAI API (no API key required)
-- Full privacy - audio never leaves your device
-- Multiple model size options (tiny to large) for balancing speed vs. accuracy
-- Significantly reduced operating costs (free instead of per-API-call)
+### Speech Recognition Options
+- **Local Speech Recognition (Default)**
+  - Uses local Whisper model for transcription (no internet required)
+  - Full privacy - audio never leaves your device
+  - Multiple model size options (tiny to large) for balancing speed vs. accuracy
+  - Significantly reduced operating costs (free instead of per-API-call)
+
+- **OpenAI Whisper API (Optional)**
+  - Option to use OpenAI's cloud-based Whisper API for higher accuracy
+  - Requires OpenAI API key and internet connection
+  - Configurable via environment variables or command-line options
+  - Better for complex commands or noisy environments
 
 ### Advanced Audio Processing
 - Volume normalization for consistent audio levels
