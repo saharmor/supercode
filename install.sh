@@ -99,7 +99,7 @@ python3.9 -m pip install -r requirements.txt
 echo -e "${YELLOW}Creating configuration file...${NC}"
 if [ ! -f .env ]; then
     echo "# SuperSurf Configuration" > .env
-    echo "WHISPER_MODEL=base" >> .env
+    echo "LOCAL_WHISPER_MODEL=turbo" >> .env
     echo -e "${GREEN}Created default configuration file.${NC}"
 else
     echo -e "${GREEN}Configuration file already exists.${NC}"

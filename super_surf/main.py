@@ -29,7 +29,7 @@ def main():
         
         # Basic configuration
         logger.info("Starting SuperSurf application")
-        model_name = os.getenv('WHISPER_MODEL', 'base')
+        model_name = os.getenv('LOCAL_WHISPER_MODEL', 'base')
         device_index = int(os.getenv('AUDIO_DEVICE_INDEX', '0'))
         logger.info(f"Whisper Model: {model_name}")
         logger.info(f"Audio Device Index: {device_index}")
