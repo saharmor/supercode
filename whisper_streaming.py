@@ -91,14 +91,29 @@ class SpeechActivationHandler:
             try:
                 # Listen for audio with a sensitivity to the activation word
                 with self.mic as source:
-                    self.recognizer.pause_threshold = 0.8  # More responsive detection
-                    print("Listening..." if not self.listening_for_commands else "Continue speaking command...")
-                    audio = self.recognizer.listen(source)
+                    # Always set non_speaking_duration first, as pause_threshold must be >= non_speaking_duration
+                    self.recognizer.non_speaking_duration = 0.2  # Set this to be very responsive
+                    
+                    # When in command mode, use appropriate thresholds
+                    if self.listening_for_commands:
+                        # Must ensure pause_threshold >= non_speaking_duration
+                        self.recognizer.pause_threshold = 0.3  # Slightly larger than non_speaking_duration
+                        print("Continue speaking command...")
+                        audio = self.recognizer.listen(source)
+                        print(f"Finished listening ({time.time() - start_time:.1f}s)")
+                    else:
+                        # When waiting for activation word, we can afford more patience
+                        self.recognizer.pause_threshold = 0.5  # Larger than non_speaking_duration
+                        print("Listening...")
+                        audio = self.recognizer.listen(source)
                 
                 # Try to recognize the speech
                 try:
+                    print("Transcribing")
+                    start_time = time.time()
                     phrase = self.recognizer.recognize_google(audio)
-                    print(f"Heard: '{phrase}'")
+                    delta = time.time() - start_time
+                    print(f"Took {delta:.2f} sec. Heard: '{phrase}'")
                     
                     # Process the recognized text
                     self._process_recognized_text(phrase)
@@ -106,15 +121,26 @@ class SpeechActivationHandler:
                 except sr.UnknownValueError:
                     # If we're in command mode and got silence, check if we should process the command
                     if self.listening_for_commands and self.current_command:
-                        print("Silence detected after command...")
-                        # Process the current command due to silence
+                        print("Silence detected after command... Processing now!")
+                        # Process the current command due to silence - do this immediately
                         self._finalize_current_command()
                     else:
-                        pass  # Just continue listening
+                        # Just a normal silence while waiting for activation
+                        if self.listening_for_commands:
+                            print("Silence - still waiting for command to continue...")
+                        # Continue listening normally
                 
             except Exception as e:
-                print(f"Error in listening loop: {e}")
-                time.sleep(0.5)  # Brief pause before retrying
+                print(f"Error in listening loop: {str(e)}")
+                # Print full exception details for debugging
+                import traceback
+                print(traceback.format_exc())
+                # Reset listening state in case of error
+                if self.listening_for_commands:
+                    print("Error occurred during command capture - resetting")
+                    self.listening_for_commands = False
+                    self.current_command = ""
+                time.sleep(1.0)  # Longer pause to avoid rapid error loops
     
     def _process_recognized_text(self, text):
         """
@@ -269,7 +295,7 @@ def main():
         # Create and start the activation handler
         handler = SpeechActivationHandler(
             activation_word="activate",
-            silence_duration=2.0
+            silence_duration=1.0
         )
         
         # Start the handler in a separate thread
