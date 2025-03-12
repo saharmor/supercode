@@ -2,6 +2,11 @@ import speech_recognition as sr
 import time
 import threading
 import queue
+import pyaudio
+import numpy as np
+import wave
+import tempfile
+import os
 
 class CommandProcessor:
     def __init__(self):
@@ -26,6 +31,281 @@ class CommandProcessor:
         # based on what was said
         
         return True
+
+class FastSpeechHandler:
+    """
+    A fast, responsive speech handler that uses PyAudio directly
+    with manual buffering for low-latency speech recognition.
+    """
+    def __init__(self, activation_word="activate", silence_duration=0.8, command_processor=None):
+        """
+        Initialize the fast speech handler.
+        
+        Args:
+            activation_word: The word that activates command listening (default: "activate")
+            silence_duration: Duration of silence in seconds to end command capture (default: 0.8)
+            command_processor: An optional CommandProcessor instance to execute commands
+        """
+        self.activation_word = activation_word.lower()
+        self.silence_duration = silence_duration
+        self.command_processor = command_processor or CommandProcessor()
+        
+        # PyAudio configuration
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 16000  # 16kHz sample rate for better speech recognition
+        self.chunk_size = 1024  # Small chunks for faster response
+        self.audio = pyaudio.PyAudio()
+        
+        # Speech recognition for processing the recorded buffers
+        self.recognizer = sr.Recognizer()
+        
+        # State variables
+        self.listening_for_commands = False
+        self.should_stop = False
+        self.command_queue = queue.Queue()
+        self.transcription_queue = queue.Queue()
+        self.current_command = ""
+        
+        # Audio processing variables
+        self.audio_buffer = []
+        self.energy_threshold = 500  # Energy level to detect speech
+        self.silent_chunks_threshold = int(self.silence_duration * self.rate / self.chunk_size)
+        self.silent_chunks = 0
+        print(f"Silent chunks threshold: {self.silent_chunks_threshold}")
+    
+    def start(self):
+        """
+        Start the handler threads.
+        """
+        self.should_stop = False
+        
+        # Start audio capture thread
+        self.capture_thread = threading.Thread(target=self._audio_capture_loop)
+        self.capture_thread.daemon = True
+        self.capture_thread.start()
+        
+        # Start transcription thread
+        self.transcribe_thread = threading.Thread(target=self._transcribe_loop)
+        self.transcribe_thread.daemon = True
+        self.transcribe_thread.start()
+        
+        # Start command processing thread
+        self.command_thread = threading.Thread(target=self._process_command_queue)
+        self.command_thread.daemon = True
+        self.command_thread.start()
+        
+        return self.capture_thread
+    
+    def stop(self):
+        """
+        Stop all threads and clean up.
+        """
+        self.should_stop = True
+        time.sleep(0.5)  # Give threads time to stop
+        self.audio.terminate()
+    
+    def _is_speech(self, audio_data):
+        """
+        Detect if audio chunk contains speech based on energy level.
+        """
+        # Convert bytes to numpy array
+        data = np.frombuffer(audio_data, dtype=np.int16)
+        
+        # Calculate energy level
+        energy = np.sqrt(np.mean(np.square(data.astype(np.float32))))
+        
+        # Return True if energy is above threshold
+        return energy > self.energy_threshold
+    
+    def _audio_capture_loop(self):
+        """
+        Continuously capture audio in small chunks and process in real-time.
+        This is the key to low latency.
+        """
+        print(f"Listening for activation word: '{self.activation_word}'\n")
+        
+        # Open audio stream
+        stream = self.audio.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk_size
+        )
+        
+        # State tracking
+        is_recording = False
+        
+        try:
+            while not self.should_stop:
+                # Get audio chunk - this is non-blocking and very fast
+                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                
+                # Check if chunk contains speech
+                contains_speech = self._is_speech(chunk)
+                
+                # State machine logic
+                if contains_speech:
+                    # Reset silence counter
+                    self.silent_chunks = 0
+                    
+                    # Start recording if not already
+                    if not is_recording:
+                        is_recording = True
+                        self.audio_buffer = []  # Clear buffer
+                        print("Speech detected, recording...")
+                    
+                    # Add chunk to buffer
+                    self.audio_buffer.append(chunk)
+                else:
+                    # No speech detected
+                    if is_recording:
+                        # Still in recording mode, count silence
+                        self.silent_chunks += 1
+                        self.audio_buffer.append(chunk)  # Keep recording silence too
+                        
+                        if self.silent_chunks % 5 == 0:
+                            print(f"Silence: {self.silent_chunks} chunks")
+                        
+                        # Check if we've reached silence threshold
+                        if self.silent_chunks >= self.silent_chunks_threshold:
+                            # End of speech detected
+                            is_recording = False
+                            print("Silence threshold reached, processing audio...")
+                            
+                            # Save audio to temp file for transcription
+                            self._save_and_transcribe()
+                    
+                # Small sleep to prevent high CPU usage
+                time.sleep(0.001)
+        
+        except Exception as e:
+            print(f"Error in audio capture: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+        finally:
+            # Clean up
+            stream.stop_stream()
+            stream.close()
+    
+    def _save_and_transcribe(self):
+        """
+        Save audio buffer to a temporary file and queue for transcription.
+        """
+        if not self.audio_buffer:
+            return
+        
+        # Create a temporary WAV file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        try:
+            with wave.open(temp_file.name, 'wb') as wf:
+                wf.setnchannels(self.channels)
+                wf.setsampwidth(self.audio.get_sample_size(self.format))
+                wf.setframerate(self.rate)
+                wf.writeframes(b''.join(self.audio_buffer))
+            
+            # Queue for transcription - this happens very quickly
+            self.transcription_queue.put(temp_file.name)
+            print(f"Audio saved, queued for transcription: {temp_file.name}")
+        
+        except Exception as e:
+            print(f"Error saving audio: {str(e)}")
+            if os.path.exists(temp_file.name):
+                os.unlink(temp_file.name)
+    
+    def _transcribe_loop(self):
+        """
+        Process transcription requests from the queue.
+        """
+        while not self.should_stop:
+            try:
+                # Get next file to transcribe with short timeout
+                try:
+                    audio_file = self.transcription_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                
+                # Transcribe the audio file
+                print("Transcribing audio...")
+                start_time = time.time()
+                
+                # Use speech_recognition library to transcribe
+                with sr.AudioFile(audio_file) as source:
+                    audio_data = self.recognizer.record(source)
+                    try:
+                        text = self.recognizer.recognize_google(audio_data).lower()
+                        delta = time.time() - start_time
+                        print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
+                        
+                        # Process the recognized text
+                        self._process_recognized_text(text)
+                    except sr.UnknownValueError:
+                        print("Speech not recognized")
+                    except Exception as e:
+                        print(f"Error in transcription: {str(e)}")
+                
+                # Clean up the temp file
+                if os.path.exists(audio_file):
+                    os.unlink(audio_file)
+                
+                self.transcription_queue.task_done()
+            
+            except Exception as e:
+                print(f"Error in transcription loop: {str(e)}")
+                time.sleep(0.5)
+    
+    def _process_recognized_text(self, text):
+        """
+        Process recognized text to detect activation word and commands.
+        If multiple activation words are present, split into separate commands
+        and execute them sequentially.
+        """
+        # Check for activation word
+        if self.activation_word in text:
+            # Split the text by the activation word
+            parts = text.split(self.activation_word)
+            
+            # Process each part after an activation word
+            commands_found = False
+            
+            for i in range(1, len(parts)):  # Skip the first part (before first activation word)
+                command = parts[i].strip()
+                if command:  # Only process non-empty commands
+                    commands_found = True
+                    print(f"\n*** ACTIVATION WORD DETECTED! ***")
+                    print(f"Command {i} detected: '{command}'")
+                    
+                    # Add to command queue for sequential execution
+                    self.command_queue.put(command)
+                    print(f"\n==== COMMAND CAPTURED: '{command}' ====\n")
+            
+            if not commands_found:
+                # Activation word(s) detected but no commands
+                print(f"\n*** ACTIVATION WORD DETECTED! ***")
+                print("No command found after activation word")
+        
+    def _process_command_queue(self):
+        """
+        Process commands from the queue.
+        """
+        while not self.should_stop:
+            try:
+                # Get command with short timeout
+                try:
+                    command = self.command_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                
+                # Execute command immediately
+                if command:
+                    self.command_processor.execute_command(command)
+                
+                self.command_queue.task_done()
+            
+            except Exception as e:
+                print(f"Error processing command: {str(e)}")
+                time.sleep(0.1)
 
 class SpeechActivationHandler:
     def __init__(self, activation_word="activate", silence_duration=2.0, command_processor=None):
@@ -289,13 +569,13 @@ class SpeechActivationHandler:
 
 def main():
     """
-    Main function to run the speech activation handler.
+    Main function to run the speech recognition handler.
     """
     try:
-        # Create and start the activation handler
-        handler = SpeechActivationHandler(
+        # Create and start the fast speech handler for better responsiveness
+        handler = FastSpeechHandler(
             activation_word="activate",
-            silence_duration=1.0
+            silence_duration=0.5  # Lower silence duration for faster response
         )
         
         # Start the handler in a separate thread
