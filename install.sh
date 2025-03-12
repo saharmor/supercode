@@ -15,21 +15,21 @@ echo -e "${BLUE}  SuperSurf Installation Script   ${NC}"
 echo -e "${BLUE}====================================${NC}"
 echo ""
 
-# Check if Python 3 is installed
-echo -e "${YELLOW}Checking for Python 3...${NC}"
-if command -v python3 &>/dev/null; then
-    PYTHON_VERSION=$(python3 --version)
+# Check if Python 3.9 is installed
+echo -e "${YELLOW}Checking for Python 3.9...${NC}"
+if command -v python3.9 &>/dev/null; then
+    PYTHON_VERSION=$(python3.9 --version)
     echo -e "${GREEN}Found $PYTHON_VERSION${NC}"
 else
-    echo -e "${RED}Python 3 not found. Please install Python 3.9 or higher before proceeding.${NC}"
+    echo -e "${RED}Python 3.9 not found. Please install Python 3.9 before proceeding.${NC}"
     echo -e "${YELLOW}Visit https://www.python.org/downloads/ to download Python.${NC}"
     exit 1
 fi
 
 # Check for pip
 echo -e "${YELLOW}Checking for pip...${NC}"
-if command -v pip3 &>/dev/null; then
-    PIP_VERSION=$(pip3 --version)
+if command -v pip3.9 &>/dev/null || command -v pip3 &>/dev/null; then
+    PIP_VERSION=$(command -v pip3.9 >/dev/null && pip3.9 --version || pip3 --version)
     echo -e "${GREEN}Found pip: ${PIP_VERSION}${NC}"
 else
     echo -e "${RED}pip not found. Please install pip before proceeding.${NC}"
@@ -84,7 +84,7 @@ fi
 
 # Create and activate virtual environment
 echo -e "${YELLOW}Creating virtual environment...${NC}"
-python3 -m venv supersurf_env
+python3.9 -m venv supersurf_env
 
 # Activate virtual environment
 echo -e "${YELLOW}Activating virtual environment...${NC}"
@@ -92,8 +92,8 @@ source supersurf_env/bin/activate
 
 # Install dependencies
 echo -e "${YELLOW}Installing dependencies... This may take a few minutes.${NC}"
-pip install --upgrade pip
-pip install -r requirements.txt
+python3.9 -m pip install --upgrade pip
+python3.9 -m pip install -r requirements.txt
 
 # Create a default .env file
 echo -e "${YELLOW}Creating configuration file...${NC}"
