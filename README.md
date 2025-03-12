@@ -40,14 +40,6 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 - Maximum restart attempt limits to prevent infinite error loops
 - Graceful degradation when services are unavailable
 
-### User Interface Enhancements
-- Redesigned menu structure with intuitive categorization
-- Enhanced status indicators in the menu bar
-- Improved visual feedback for command execution
-- Separate menus for commands, settings, tools, and help
-- Real-time command success/error statistics
-- Cleaner menu bar display without distracting emojis
-
 ### Command Recognition Improvements
 - Enhanced fuzzy matching for better command detection
 - Extensive dictionary of common transcription errors
@@ -74,29 +66,14 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 
 #### Basic Editing Commands
 - Type text (`"Surf type [text]"` or `"Surf write [text]"`) - Types the specified text
-- Save file (`"Surf save"`) - Saves the current file (⌘S)
 - Undo action (`"Surf undo"`) - Undoes the last action (⌘Z)
 - Redo action (`"Surf redo"`) - Redoes the last undone action (⇧⌘Z)
-- Copy text (`"Surf copy"`) - Copies selected text (⌘C)
-- Paste text (`"Surf paste"`) - Pastes from clipboard (⌘V)
-- Cut text (`"Surf cut"`) - Cuts selected text (⌘X)
-- Select all (`"Surf select all"`) - Selects all text (⌘A)
 
 #### Navigation Commands
 - Find text (`"Surf find [text]"` or `"Surf search [text]"`) - Finds text in document (⌘F)
 - Next result (`"Surf next"`) - Goes to next search result (⌘G)
-- Previous result (`"Surf previous"`) - Goes to previous search result (⇧⌘G)
 - Go to line (`"Surf go to line [number]"`) - Goes to specified line
-- Go to top (`"Surf top"` or `"Surf go to top"`) - Goes to top of document (⌘↑)
-- Go to bottom (`"Surf bottom"` or `"Surf go to bottom"`) - Goes to bottom of document (⌘↓)
 
-### Tools and Utilities
-- Microphone testing
-- Keyboard functionality testing
-- Speech translation
-- Performance monitoring
-- Audio device selection
-- Model configuration
 
 ## System Requirements
 
@@ -132,7 +109,7 @@ SuperSurf has undergone significant enhancements to improve reliability, user ex
 
 5. Run the application:
    ```bash
-   python run_enhanced.py
+   python run_mac_app.py
    ```
 
 ## Dependencies

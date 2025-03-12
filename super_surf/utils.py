@@ -80,7 +80,7 @@ def focus_surf_app():
         bool: True if successful, False otherwise
     """
     try:
-        subprocess.run(["osascript", "-e", 'tell application "Surf" to activate'])
+        subprocess.run(["osascript", "-e", 'tell application "Windsurf" to activate'])
         return True
     except Exception as e:
         print(f"Error focusing Windsurf app: {e}")

@@ -29,8 +29,9 @@ except ImportError as e:
     except ImportError as e:
         raise ImportError(f"Failed to import essential modules: {str(e)}")
 
-# Load environment variables
-load_dotenv()
+# Load environment variables with absolute path to ensure they're loaded correctly
+dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path=dotenv_path, override=True)
 
 class SuperSurfApp(rumps.App):
     def __init__(self):
