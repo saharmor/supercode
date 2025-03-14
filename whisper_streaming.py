@@ -7,6 +7,10 @@ import numpy as np
 import wave
 import tempfile
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class CommandProcessor:
     def __init__(self):
@@ -59,6 +63,21 @@ class FastSpeechHandler:
         
         # Speech recognition for processing the recorded buffers
         self.recognizer = sr.Recognizer()
+        
+        # Load environment variables for transcription service
+        self.use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.openai_whisper_model = os.getenv("OPENAI_WHISPER_MODEL", "whisper-1")
+        
+        # Configure OpenAI API if enabled
+        if self.use_openai_api:
+            if not self.openai_api_key:
+                print("Warning: USE_OPENAI_API is set to true but OPENAI_API_KEY is not set.")
+                print("Falling back to Google speech recognition.")
+                self.use_openai_api = False
+            else:
+                # Set OpenAI API key for the recognizer
+                self.recognizer.openai_api_key = self.openai_api_key
         
         # State variables
         self.listening_for_commands = False
@@ -165,9 +184,6 @@ class FastSpeechHandler:
                         self.silent_chunks += 1
                         self.audio_buffer.append(chunk)  # Keep recording silence too
                         
-                        if self.silent_chunks % 5 == 0:
-                            print(f"Silence: {self.silent_chunks} chunks")
-                        
                         # Check if we've reached silence threshold
                         if self.silent_chunks >= self.silent_chunks_threshold:
                             # End of speech detected
@@ -207,7 +223,6 @@ class FastSpeechHandler:
             
             # Queue for transcription - this happens very quickly
             self.transcription_queue.put(temp_file.name)
-            print(f"Audio saved, queued for transcription: {temp_file.name}")
         
         except Exception as e:
             print(f"Error saving audio: {str(e)}")
@@ -234,8 +249,17 @@ class FastSpeechHandler:
                 with sr.AudioFile(audio_file) as source:
                     audio_data = self.recognizer.record(source)
                     try:
-                        # text = self.recognizer.recognize_assemblyai(audio_data).lower()
-                        text = self.recognizer.recognize_google(audio_data).lower()
+                        # Choose transcription service based on environment variable
+                        if self.use_openai_api:
+                            print(f"Using OpenAI Whisper API (model: {self.openai_whisper_model})")
+                            text = self.recognizer.recognize_whisper_api(
+                                audio_data,
+                                model=self.openai_whisper_model
+                            ).lower()
+                        else:
+                            print("Using Google Speech Recognition")
+                            text = self.recognizer.recognize_google(audio_data).lower()
+                        
                         delta = time.time() - start_time
                         print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
                         

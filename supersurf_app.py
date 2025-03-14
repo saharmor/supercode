@@ -11,6 +11,8 @@ import os
 import sys
 from dotenv import load_dotenv
 
+load_dotenv()
+
 # Import the whisper streaming functionality
 from whisper_streaming import FastSpeechHandler, CommandProcessor
 
@@ -57,7 +59,11 @@ class SuperSurfApp(rumps.App):
         self.listen_thread.daemon = True
         self.listen_thread.start()
         
-        rumps.notification("SuperSurf", "Voice Recognition Active", "Say commands starting with 'surf'")
+        # Get transcription service info
+        use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
+        service_name = "OpenAI Whisper API" if use_openai_api else "Google Speech Recognition"
+        
+        rumps.notification("SuperSurf", f"Voice Recognition Active ({service_name})", "Say commands starting with 'activate'")
     
     def stop_listening(self):
         """Stop listening for voice commands"""
@@ -79,12 +85,20 @@ class SuperSurfApp(rumps.App):
             # Create a custom command processor that shows notifications
             command_processor = MenuBarCommandProcessor()
             
+            # Get transcription service info
+            use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
+            openai_api_key = os.getenv("OPENAI_API_KEY", "")
+            
             # Create and start the fast speech handler
             self.handler = FastSpeechHandler(
-                activation_word="surf",
-                silence_duration=0.5,
+                activation_word="activate",
+                silence_duration=2,
                 command_processor=command_processor
             )
+            
+            # Log which service is being used
+            service_name = "OpenAI Whisper API" if self.handler.use_openai_api else "Google Speech Recognition"
+            print(f"Using {service_name} for transcription")
             
             # Start the handler
             listen_thread = self.handler.start()

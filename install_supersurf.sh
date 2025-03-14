@@ -13,5 +13,12 @@ fi
 echo "Installing required Python packages..."
 python3 -m pip install -r requirements.txt
 
+# Create .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    echo "Creating default .env file..."
+    cp .env.default .env
+    echo "Please edit .env to configure your speech recognition preferences."
+fi
+
 echo "Dependencies installed successfully!"
-echo "To run SuperSurf, use: python3 supersurf_app.py"
+echo "To run SuperSurf, use: ./run_supersurf.sh"
