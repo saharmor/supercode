@@ -8,16 +8,25 @@ import wave
 import tempfile
 import os
 from dotenv import load_dotenv
+from computer_use_utils import get_coordinates_for_prompt
+import pyautogui
 
 # Load environment variables
 load_dotenv()
 
+
 class CommandProcessor:
     def __init__(self):
-        """
-        Initialize the command processor.
-        Override this method to implement your own command execution logic.
-        """
+        self.default_action_selectors = [
+            {"command": "type", "llm_selector": "Input box for the Cascade agent which start with 'Ask anything'. Usually, it's in the right pane of the screen"}
+        ]
+
+        self.actions_coordinates = {}
+        for action in self.default_action_selectors:
+            self.actions_coordinates[action["command"]] = get_coordinates_for_prompt(action["llm_selector"])
+        
+        self.buttons = {}
+
         self.command_history = []
         
     def execute_command(self, command_text):
@@ -30,10 +39,25 @@ class CommandProcessor:
         # Add command to history
         self.command_history.append(command_text)
         
-        # Add your command execution logic here
-        # For example, you could parse the command and execute different actions
-        # based on what was said
-        
+        command_type = command_text.split(" ")[0]
+        command_params = " ".join(command_text.split(" ")[1:])
+        if command_type == "type":
+            pyautogui.moveTo(self.actions_coordinates[command_type][0], self.actions_coordinates[command_type][1])
+            pyautogui.click(button="left")
+            pyautogui.write(command_params)
+            pyautogui.press("enter")
+        elif command_type == "click":
+            command_params = command_params.split(" ")[0]
+            pyautogui.moveTo(self.buttons[command_params][0], self.buttons[command_params][1])
+            pyautogui.click(button="left")
+        elif command_type == "learn": # only buttons for now
+            btn_name = command_params.split(" ")[0]
+            btn_selector = " ".join(command_params.split(" ")[1:])
+            self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
+        else:
+            print(f"Unknown command type: '{command_type}'")
+            return False
+
         return True
 
 class FastSpeechHandler:
@@ -91,7 +115,6 @@ class FastSpeechHandler:
         self.energy_threshold = 500  # Energy level to detect speech
         self.silent_chunks_threshold = int(self.silence_duration * self.rate / self.chunk_size)
         self.silent_chunks = 0
-        print(f"Silent chunks threshold: {self.silent_chunks_threshold}")
     
     def start(self):
         """
@@ -189,7 +212,7 @@ class FastSpeechHandler:
                             # End of speech detected
                             is_recording = False
                             print("Silence threshold reached, processing audio...")
-                            
+        
                             # Save audio to temp file for transcription
                             self._save_and_transcribe()
                     
@@ -251,13 +274,11 @@ class FastSpeechHandler:
                     try:
                         # Choose transcription service based on environment variable
                         if self.use_openai_api:
-                            print(f"Using OpenAI Whisper API (model: {self.openai_whisper_model})")
                             text = self.recognizer.recognize_whisper_api(
                                 audio_data,
                                 model=self.openai_whisper_model
                             ).lower()
                         else:
-                            print("Using Google Speech Recognition")
                             text = self.recognizer.recognize_google(audio_data).lower()
                         
                         delta = time.time() - start_time
@@ -591,33 +612,3 @@ class SpeechActivationHandler:
                 pass  # No commands in the queue
             except Exception as e:
                 print(f"Error processing command: {e}")
-
-def main():
-    """
-    Main function to run the speech recognition handler.
-    """
-    try:
-        # Create and start the fast speech handler for better responsiveness
-        handler = FastSpeechHandler(
-            activation_word="activate",
-            silence_duration=0.5  # Lower silence duration for faster response
-        )
-        
-        # Start the handler in a separate thread
-        listen_thread = handler.start()
-        
-        # Keep the main thread running
-        print("Press Ctrl+C to exit...")
-        while listen_thread.is_alive():
-            time.sleep(0.1)
-            
-    except KeyboardInterrupt:
-        print("\nStopping speech recognition...")
-    finally:
-        # Clean up
-        if 'handler' in locals():
-            handler.stop()
-        print("Speech recognition stopped.")
-
-if __name__ == "__main__":
-    main()
