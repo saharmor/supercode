@@ -234,6 +234,7 @@ class FastSpeechHandler:
                 with sr.AudioFile(audio_file) as source:
                     audio_data = self.recognizer.record(source)
                     try:
+                        # text = self.recognizer.recognize_assemblyai(audio_data).lower()
                         text = self.recognizer.recognize_google(audio_data).lower()
                         delta = time.time() - start_time
                         print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
