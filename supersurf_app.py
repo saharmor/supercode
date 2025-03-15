@@ -24,7 +24,6 @@ class SuperSurfApp(rumps.App):
                                           title=None,
                                           quit_button=rumps.MenuItem("Quit", key="q"))
         
-        # Initialize state
         self.is_listening = False
         self.listen_thread = None
         self.handler = None

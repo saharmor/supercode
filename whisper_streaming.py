@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from computer_use_utils import get_coordinates_for_prompt
 import pyautogui
+import openai
 
 # Load environment variables
 load_dotenv()
@@ -99,9 +100,7 @@ class FastSpeechHandler:
                 print("Warning: USE_OPENAI_API is set to true but OPENAI_API_KEY is not set.")
                 print("Falling back to Google speech recognition.")
                 self.use_openai_api = False
-            else:
-                # Set OpenAI API key for the recognizer
-                self.recognizer.openai_api_key = self.openai_api_key
+            self.openai_client = openai.Client(api_key=self.openai_api_key)
         
         # State variables
         self.listening_for_commands = False
@@ -272,20 +271,26 @@ class FastSpeechHandler:
                 with sr.AudioFile(audio_file) as source:
                     audio_data = self.recognizer.record(source)
                     try:
-                        # Choose transcription service based on environment variable
                         if self.use_openai_api:
-                            text = self.recognizer.recognize_whisper_api(
-                                audio_data,
-                                model=self.openai_whisper_model
-                            ).lower()
+                            # Open the temporary audio file for Whisper API
+                            with open(audio_file, 'rb') as file:
+                                result = self.openai_client.audio.transcriptions.create(
+                                    model=self.openai_whisper_model,
+                                    file=file,
+                                    language="en",
+                                    # prompt=""
+                                )
+                                text = result.text
                         else:
-                            text = self.recognizer.recognize_google(audio_data).lower()
+                            text = self.recognizer.recognize_google(audio_data)
                         
+                        # Clean the text by removing punctuation and converting to lowercase
+                        clean_text = ''.join(c for c in text if c.isalnum() or c.isspace()).lower()
                         delta = time.time() - start_time
                         print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
                         
                         # Process the recognized text
-                        self._process_recognized_text(text)
+                        self._process_recognized_text(clean_text)
                     except sr.UnknownValueError:
                         print("Speech not recognized")
                     except Exception as e:
