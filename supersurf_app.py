@@ -13,8 +13,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import the whisper streaming functionality
-from whisper_streaming import FastSpeechHandler, CommandProcessor
+# Import the whisper streaming functionality and command processing
+from whisper_streaming import FastSpeechHandler
+from command_processor import CommandProcessor
 
 class SuperSurfApp(rumps.App):
     def __init__(self):
@@ -146,13 +147,13 @@ class MenuBarCommandProcessor(CommandProcessor):
         """
         Execute a command and show a notification.
         """
-        # Call the parent method to add to history
-        super().execute_command(command_text)
+        # Call the parent method to execute the command
+        result = super().execute_command(command_text)
         
         # Show a notification
         rumps.notification("SuperSurf", "Command Detected", f"'{command_text}'")
         
-        return True
+        return result
 
 
 def main():

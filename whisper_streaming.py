@@ -8,58 +8,13 @@ import wave
 import tempfile
 import os
 from dotenv import load_dotenv
-from computer_use_utils import get_coordinates_for_prompt
-import pyautogui
 import openai
+
+# Import the new command processor module
+from command_processor import CommandProcessor, CommandQueue
 
 # Load environment variables
 load_dotenv()
-
-
-class CommandProcessor:
-    def __init__(self):
-        self.default_action_selectors = [
-            {"command": "type", "llm_selector": "Input box for the Cascade agent which start with 'Ask anything'. Usually, it's in the right pane of the screen"}
-        ]
-
-        self.actions_coordinates = {}
-        for action in self.default_action_selectors:
-            self.actions_coordinates[action["command"]] = get_coordinates_for_prompt(action["llm_selector"])
-        
-        self.buttons = {}
-
-        self.command_history = []
-        
-    def execute_command(self, command_text):
-        """
-        Execute a command based on the transcribed text.
-        Override this method to implement your own command execution logic.
-        """
-        print(f"\n==== EXECUTING COMMAND: '{command_text}' ====\n")
-        
-        # Add command to history
-        self.command_history.append(command_text)
-        
-        command_type = command_text.split(" ")[0]
-        command_params = " ".join(command_text.split(" ")[1:])
-        if command_type == "type":
-            pyautogui.moveTo(self.actions_coordinates[command_type][0], self.actions_coordinates[command_type][1])
-            pyautogui.click(button="left")
-            pyautogui.write(command_params)
-            pyautogui.press("enter")
-        elif command_type == "click":
-            command_params = command_params.split(" ")[0]
-            pyautogui.moveTo(self.buttons[command_params][0], self.buttons[command_params][1])
-            pyautogui.click(button="left")
-        elif command_type == "learn": # only buttons for now
-            btn_name = command_params.split(" ")[0]
-            btn_selector = " ".join(command_params.split(" ")[1:])
-            self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
-        else:
-            print(f"Unknown command type: '{command_type}'")
-            return False
-
-        return True
 
 class FastSpeechHandler:
     """
@@ -77,7 +32,8 @@ class FastSpeechHandler:
         """
         self.activation_word = activation_word.lower()
         self.silence_duration = silence_duration
-        self.command_processor = command_processor or CommandProcessor()
+        self.command_processor = command_processor
+        self.command_queue = CommandQueue(activation_word, command_processor)
         
         # PyAudio configuration
         self.format = pyaudio.paInt16
@@ -105,7 +61,6 @@ class FastSpeechHandler:
         # State variables
         self.listening_for_commands = False
         self.should_stop = False
-        self.command_queue = queue.Queue()
         self.transcription_queue = queue.Queue()
         self.current_command = ""
         
@@ -130,11 +85,6 @@ class FastSpeechHandler:
         self.transcribe_thread = threading.Thread(target=self._transcribe_loop)
         self.transcribe_thread.daemon = True
         self.transcribe_thread.start()
-        
-        # Start command processing thread
-        self.command_thread = threading.Thread(target=self._process_command_queue)
-        self.command_thread.daemon = True
-        self.command_thread.start()
         
         return self.capture_thread
     
@@ -308,55 +258,12 @@ class FastSpeechHandler:
     
     def _process_recognized_text(self, text):
         """
-        Process recognized text to detect activation word and commands.
-        If multiple activation words are present, split into separate commands
-        and execute them sequentially.
+        Process recognized text to extract commands using the CommandQueue.
         """
-        # Check for activation word
-        if self.activation_word in text:
-            # Split the text by the activation word
-            parts = text.split(self.activation_word)
-            
-            # Process each part after an activation word
-            commands_found = False
-            
-            for i in range(1, len(parts)):  # Skip the first part (before first activation word)
-                command = parts[i].strip()
-                if command:  # Only process non-empty commands
-                    commands_found = True
-                    print(f"\n*** ACTIVATION WORD DETECTED! ***")
-                    print(f"Command {i} detected: '{command}'")
-                    
-                    # Add to command queue for sequential execution
-                    self.command_queue.put(command)
-                    print(f"\n==== COMMAND CAPTURED: '{command}' ====\n")
-            
-            if not commands_found:
-                # Activation word(s) detected but no commands
-                print(f"\n*** ACTIVATION WORD DETECTED! ***")
-                print("No command found after activation word")
-        
-    def _process_command_queue(self):
-        """
-        Process commands from the queue.
-        """
-        while not self.should_stop:
-            try:
-                # Get command with short timeout
-                try:
-                    command = self.command_queue.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                
-                # Execute command immediately
-                if command:
-                    self.command_processor.execute_command(command)
-                
-                self.command_queue.task_done()
-            
-            except Exception as e:
-                print(f"Error processing command: {str(e)}")
-                time.sleep(0.1)
+        # Process text and execute any commands found
+        if self.command_processor:
+            commands = self.command_queue.process_text(text)
+            self.command_queue.execute_commands(commands)
 
 class SpeechActivationHandler:
     def __init__(self, activation_word="activate", silence_duration=2.0, command_processor=None):
@@ -370,7 +277,8 @@ class SpeechActivationHandler:
         """
         self.activation_word = activation_word.lower()
         self.silence_duration = silence_duration
-        self.command_processor = command_processor or CommandProcessor()
+        self.command_processor = command_processor
+        self.command_queue = CommandQueue(activation_word, command_processor)
         
         # Initialize recognizer and microphone
         self.recognizer = sr.Recognizer()
