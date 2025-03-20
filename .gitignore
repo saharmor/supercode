@@ -67,3 +67,6 @@ supersurf_env/
 *.mp3
 *.mp4
 .env
+
+screenshots/*
+email_p*.py
