@@ -19,7 +19,7 @@ from PIL import Image
 import subprocess
 import google.generativeai as genai
 from dotenv import load_dotenv
-
+from utils import play_beep
 
 def get_window_list():
     """
@@ -694,13 +694,7 @@ def monitor_cascade_state(interval=4.0, output_dir="screenshots", prefix="cascad
                     notification_count += 1
                     print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Cascade needs your input!")
                     # Use system beep instead of sound file
-                    if platform.system() == "Darwin":  # macOS
-                        subprocess.call(["afplay", "/System/Library/Sounds/Ping.aiff"])
-                    elif platform.system() == "Linux":
-                        subprocess.call(["paplay", "/usr/share/sounds/freedesktop/stereo/bell.oga"])
-                    elif platform.system() == "Windows":
-                        import winsound
-                        winsound.Beep(1000, 500)  # 1000 Hz for 500 milliseconds
+                    play_beep(1000, 500)
                     # Now wait longer before checking again
                     time.sleep(20)
                     

@@ -66,7 +66,7 @@ class FastSpeechHandler:
         
         # Audio processing variables
         self.audio_buffer = []
-        self.energy_threshold = 1500  # Higher threshold to reduce sensitivity to random noise
+        self.energy_threshold = 1000  # Higher threshold to reduce sensitivity to random noise
         self.silent_chunks_threshold = int(self.silence_duration * self.rate / self.chunk_size)
         self.silent_chunks = 0
     
