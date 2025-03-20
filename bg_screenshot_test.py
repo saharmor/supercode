@@ -547,13 +547,16 @@ def analyze_image_for_text(image_path, object_description=None, initialize_if_ne
         return False, f"Error: {str(e)}"
 
 
-def analyze_cascade_state(image_path, initialize_if_needed=True, verbose=False):
+def analyze_coding_generation_state(coding_generation_analysis_prompt, image_path, initialize_if_needed=True, verbose=False, interface_name="Cascade"):
     """
-    Specialized function to analyze the state of Cascade AI assistant in a screenshot.
+    Specialized function to analyze the state of coding generation AI assistant in a screenshot.
     
     Args:
         image_path (str): Path to the image file.
         initialize_if_needed (bool, optional): Whether to initialize Gemini if needed. Defaults to True.
+        verbose (bool, optional): Whether to print detailed logs. Defaults to False.
+        interface_name (str, optional): Name of the interface being analyzed. Defaults to "Cascade".
+        coding_generation_analysis_prompt (str, optional): Custom prompt for analysis. If None, uses default.
         
     Returns:
         tuple: (bool, str) - (Whether action is needed, State description: "user_input_required", "still_working", or "done")
@@ -574,30 +577,9 @@ def analyze_cascade_state(image_path, initialize_if_needed=True, verbose=False):
             # Get Gemini model
             model = genai.GenerativeModel('gemini-2.0-flash-lite')
             
-            # Build the specialized Cascade monitoring prompt
-            cascade_prompt = (
-                "You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. " 
-                "Determine the Cascade's current state based on visual cues in the right pane of the image. "
-                "Return the following state for the following scenarios: "
-                "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane"
-                "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
-                "'still_working' for all other cases"
-                "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
-                "- 'cascade_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
-                "- 'reasoning': a brief explanation for your decision "
-                "Example response format: "
-                "```json "
-                "{ "
-                "  \"cascade_state\": \"done\", "
-                "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
-                "} "
-                "``` "
-                "Only analyze the right panel and provide nothing but valid JSON in your response."
-            )
-            
             # Get response from Gemini with timing
             start_time = time.time()
-            response = model.generate_content([cascade_prompt, img])
+            response = model.generate_content([coding_generation_analysis_prompt, img])
             end_time = time.time()
             elapsed_time = end_time - start_time
             if verbose:
@@ -622,9 +604,10 @@ def analyze_cascade_state(image_path, initialize_if_needed=True, verbose=False):
             except json.JSONDecodeError as e:
                 print(f"Error parsing JSON response: {e}")
                 # Create a default response
-                gemini_response = {"cascade_state": "still_working", "reasoning": "Failed to parse response"}
-            # Extract the cascade state from JSON response
-            state = gemini_response["cascade_state"].lower()
+                gemini_response = {"interface_state": "still_working", "reasoning": "Failed to parse response"}
+            
+                
+            state = gemini_response["interface_state"].lower()
             
             # Determine actions based on state
             user_action_needed = state == "user_input_required"
@@ -638,36 +621,46 @@ def analyze_cascade_state(image_path, initialize_if_needed=True, verbose=False):
             return user_action_needed or done, state
             
     except Exception as e:
-        print(f"Error analyzing Cascade state: {e}")
+        print(f"Error analyzing {interface_name} state: {e}")
         return False, f"Error: {str(e)}"
 
 
-def monitor_cascade_state(interval=4.0, output_dir="screenshots", prefix="cascade_"):
+def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output_dir="screenshots", interface_name=None):
     """
-    Continuously monitor the state of Cascade AI assistant and notify when user input is required or when done.
+    Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
     Args:
         interval (float, optional): Default check interval in seconds. Defaults to 4.0.
         output_dir (str, optional): Output directory for screenshots. Defaults to "screenshots".
-        prefix (str, optional): Prefix for screenshot filenames. Defaults to "cascade_".
+        prefix (str, optional): Prefix for screenshot filenames. Defaults to "coding_".
+        interface_name (str, optional): Name of the interface being monitored. If provided, used in filename prefix.
     """
     try:
         # Initialize Gemini API
         gemini_initialized = initialize_gemini_client()
         if not gemini_initialized:
-            print("⚠️ Could not initialize Gemini API. Cannot monitor Cascade state.")
+            print(f"⚠️ Could not initialize Gemini API. Cannot monitor {interface_name} state.")
             return
             
-        print("🔍 Starting Cascade state monitoring...")
-        print("   - Will notify when Cascade needs your input or is done")
+        print(f"🔍 Starting {interface_name} state monitoring...")
+        print("   - Will notify when coding generation needs your input or is done")
         print("   - Press Ctrl+C to stop monitoring")
         
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
         
+        # Set the filename prefix based on interface name if provided
+        if interface_name:
+            file_prefix = f"{interface_name}_"
+        else:
+            file_prefix = 'interface_'
+            
         screenshot_count = 0
         notification_count = 0
         last_state = None
+        
+        # wait for two seconds before starting
+        time.sleep(2)
         
         while True:
             try:
@@ -675,24 +668,24 @@ def monitor_cascade_state(interval=4.0, output_dir="screenshots", prefix="cascad
                 screenshot_count += 1
                 image = capture_screen()
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                filename = f"{prefix}{timestamp}_screenshot.png"
+                filename = f"{file_prefix}{timestamp}_screenshot.png"
                 path = os.path.join(output_dir, filename)
                 
                 # Save the screenshot
                 image.save(path)
-                print(f"\rChecking Cascade state ({screenshot_count})...", end="")
+                print(f"\rChecking coding generation state ({screenshot_count})...", end="")
                 
-                # Analyze the screenshot to determine Cascade state
-                _, state = analyze_cascade_state(path, False)  # No need to reinitialize
+                # Analyze the screenshot to determine coding generation state
+                _, state = analyze_coding_generation_state(interface_state_prompt,path, False, interface_name=interface_name, verbose=True)  # No need to reinitialize
                 
                 if state != last_state:
-                    print(f"\nCascade state: {state}")
+                    print(f"\nCoding generation state: {state}")
                     last_state = state
                 
                 if state == "user_input_required":
                     # User input is required - play sound and wait longer
                     notification_count += 1
-                    print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Cascade needs your input!")
+                    print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Coding generation needs your input!")
                     # Use system beep instead of sound file
                     play_beep(1000, 500)
                     # Now wait longer before checking again
@@ -700,13 +693,13 @@ def monitor_cascade_state(interval=4.0, output_dir="screenshots", prefix="cascad
                     
                 elif state == "done":
                     # Task is complete
-                    print("\n✅ Cascade has completed its task!")
+                    print("\n✅ Coding generation has completed its task!")
                     sound_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_done.mp3")
                     play_sound(sound_file)
                     return  # Exit the monitoring loop
                     
                 else:  # still_working
-                    # Cascade is still working, continue regular monitoring
+                    # Coding generation is still working, continue regular monitoring
                     time.sleep(interval)
                     
             except KeyboardInterrupt:
@@ -830,7 +823,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.monitor_cascade:
-        monitor_cascade_state(args.interval, args.output_dir, args.prefix)
+        monitor_coding_generation_state(args.interval, args.output_dir, args.prefix)
     elif args.list:
         windows = get_window_list()
         print("Available windows:")

@@ -85,14 +85,10 @@ class SuperSurfApp(rumps.App):
             # Create a custom command processor that shows notifications
             command_processor = MenuBarCommandProcessor()
             
-            # Get transcription service info
-            use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
-            openai_api_key = os.getenv("OPENAI_API_KEY", "")
-            
             # Create and start the fast speech handler
             self.handler = FastSpeechHandler(
                 activation_word="activate",
-                silence_duration=2,
+                silence_duration=3,
                 command_processor=command_processor
             )
             

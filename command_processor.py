@@ -5,7 +5,6 @@ Handles the execution of commands from transcribed speech.
 """
 
 import os
-from openai import OpenAI
 import pyautogui
 import threading
 from dotenv import load_dotenv
@@ -14,7 +13,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 from computer_use_utils import get_coordinates_for_prompt
-from utils import play_beep
+from utils import play_beep, enhance_user_prompt
 
 load_dotenv()
 
@@ -26,19 +25,114 @@ class CommandProcessor:
     """
     Processes commands received from transcribed speech.
     Implements various actions like typing text, clicking, and learning UI elements.
+    Supports multiple interfaces (Windsurf, lovable) with different command selectors.
     """
-    def __init__(self):
-        self.default_action_selectors = [
-            {"command": "type", "llm_selector": "Input box for the Cascade agent which start with 'Ask anything'. Usually, it's in the right pane of the screen"}
-        ]
-
-        self.actions_coordinates = {}
-        for action in self.default_action_selectors:
-            self.actions_coordinates[action["command"]] = get_coordinates_for_prompt(action["llm_selector"])
+    # Default interface
+    DEFAULT_IDE = 'windsurf'
+    # DEFAULT_IDE = 'lovable'
+    SUPPORTED_INTERFACES = ["windsurf", "lovable"]
+    
+    INTERFACE_CONFIG = {
+    "windsurf": {
+        "commands": {
+            "type": {
+                "llm_selector": "Input box for the Cascade agent which starts with 'Ask anything'. Usually, it's in the right pane of the screen",
+                "description": "Text input field for sending commands to Cascade"
+            },
+        },
+        "interface_state_prompt": 
+            "You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. " 
+                "Determine the Cascade's current state based on visual cues in the right pane of the image. "
+                    "Return the following state for the following scenarios: "
+                    "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane"
+                    "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
+                    "'still_working' for all other cases"
+                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
+                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
+                    "- 'reasoning': a brief explanation for your decision "
+                    "Example response format: "
+                    "```json "
+                    "{ "
+                "  \"interface_state\": \"done\", "
+                    "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
+                    "} "
+                    "``` "
+                    "Only analyze the right panel and provide nothing but valid JSON in your response."
         
+    },
+    "lovable": {
+        "commands": {
+            "type": {
+                "llm_selector": "The main text input field at the bottom left of the lovable interface which says 'Ask lovable...'",
+                "description": "Text input field for sending messages to lovable"
+            },
+        },
+        "interface_state_prompt":
+            "You are analyzing a screenshot of the Lovable coding assistant interface. You only care about the left panel chat panel for sending messages to Lovable. IGNORE ALL THE REST OF THE SCREENSHOT. " 
+                "Determine the Lovable's current state based on visual cues in the left pane of the image. "
+                    "Return the following state for the following scenarios: "
+                    # "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the left handside pane"
+                    "'still_working' if you see a small white circle above the chat input or a stop button at the bottom left of the input box"
+                    "'done' for all other cases"
+                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
+                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
+                    "- 'reasoning': a brief explanation for your decision "
+                    "Example response format: "
+                    "```json "
+                    "{ "
+                "  \"interface_state\": \"still_working\", "
+                    "  \"reasoning\": \"I can see a stop button or spinner in the left panel\" "
+                    "} "
+                    "``` "
+                    "Only analyze the left panel and provide nothing but valid JSON in your response."
+    }
+}
+
+
+    def __init__(self):
+        self.current_interface = CommandProcessor.DEFAULT_IDE
+        self.interface_config = CommandProcessor.INTERFACE_CONFIG
+        
+        # Initialize actions_coordinates with nested structure
+        # Format: {"interface_name": {"command_name": (x, y)}}
+        self.actions_coordinates = {}
+        
+        # Custom user-defined buttons
         self.buttons = {}
+
+        # Initialize action coordinates based on the current interface
+        self.initialize_interface(self.current_interface)
+        
+        # Command history for tracking past commands
         self.command_history = []
-        self.cascade_monitor_thread = None
+        
+        # Cascade monitoring thread
+        self.interface_monitor_thread = None
+    
+    def initialize_interface(self, interface_name):
+        """Initialize action coordinates for the specified interface
+        
+        Args:
+            interface_name: The name of the interface to initialize ('windsurf', 'lovable')
+            
+        Returns:
+            bool: True if initialization was successful, False otherwise
+        """
+        if interface_name not in self.interface_config:
+            print(f"Interface {interface_name} not found in configuration")
+            raise ValueError(f"Interface {interface_name} not found in configuration")
+        
+        # Initialize the interface if not already in actions_coordinates
+        if interface_name not in self.actions_coordinates:
+            self.actions_coordinates[interface_name] = {}
+            
+        interface_commands = self.interface_config[interface_name]['commands']
+        for cmd_name, cmd_data in interface_commands.items():
+            coords = get_coordinates_for_prompt(cmd_data['llm_selector'])
+            self.actions_coordinates[interface_name][cmd_name] = coords
+        
+        return True
+
         
     def start_cascade_monitoring(self):
         """
@@ -51,61 +145,22 @@ class CommandProcessor:
             if sys_path not in os.sys.path:
                 os.sys.path.append(sys_path)
                 
-            from bg_screenshot_test import monitor_cascade_state
+            from bg_screenshot_test import monitor_coding_generation_state
             
             # Start monitoring in a background thread
-            self.cascade_monitor_thread = threading.Thread(target=monitor_cascade_state, args=(3.0, "screenshots", "cascade_"))
-            self.cascade_monitor_thread.daemon = True
-            self.cascade_monitor_thread.start()
-            print("Started Cascade state monitoring in background")
+            # Create the monitoring thread with correct arguments
+            interface_state_prompt = self.interface_config[self.current_interface]['interface_state_prompt']
+            self.interface_monitor_thread = threading.Thread(
+                target=monitor_coding_generation_state,
+                args=(interface_state_prompt, 3.0, "screenshots", self.current_interface)
+            )
+            self.interface_monitor_thread.daemon = True
+            self.interface_monitor_thread.start()
+            print(f"Started {self.current_interface} state monitoring in background")
         except Exception as e:
-            print(f"Error starting Cascade monitoring: {e}")
+            print(f"Error starting coding interface monitoring: {e}")
             
-    def enhance_user_prompt(self, command_text):
-        """
-        Enhance a raw user prompt by using GPT-4o Mini to structure it for a coding model.
-        
-        Args:
-            command_text: The raw prompt text to enhance.
-            
-        Returns:
-            str: The enhanced, structured prompt.
-        """
-        try:
-            client = OpenAI()
-            
-            system_prompt = """You are a prompt engineering assistant. Your task is to transform raw, unstructured prompts 
-            into short prompts specifically designed for coding models and IDEs like Copilot and Windsurf.
-            Analyze the complexity of the request and return the transformed prompt optimized for coding models
-            along with the required intelligence level based on the complexity of the task.
-            
-            Use 'low' for simple formatting or basic code generation, 'medium' for standard programming tasks,
-            and 'high' for complex algorithms, architecture design, or domain-specific optimizations.
-            
-            If the prompt doesn't make sense for a coding task, return the prompt as None."""
-            
-            try:
-                completion = client.beta.chat.completions.parse(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Transform this raw user prompt: {command_text}"}
-                    ],
-                    temperature=0.5,
-                    response_format=EnhancedPrompt,
-                )
-                
-                enhanced_data = completion.choices[0].message.parsed
-                return enhanced_data
-            except Exception as e:
-                print(f"Error parsing structured output: {e}")
-                # Fallback to regular response if structured parsing fails
-                return {"enhancedPrompt": command_text, "requiredIntelligenceLevel": "medium"}
-            
-        except Exception as e:
-            print(f"Error enhancing prompt: {e}")
-            # Return original prompt if enhancement fails
-            return command_text
+    
     
     def execute_command(self, command_text):
         """
@@ -127,18 +182,25 @@ class CommandProcessor:
         command_params = " ".join(command_text.split(" ")[1:])
         
         if command_type == "type":
-            # Regular type command
-            enhanced_prompt = self.enhance_user_prompt(command_params)
-            if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
-                print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
-                # play sound to notify user
+            # enhanced_prompt = enhance_user_prompt(command_params)
+            # if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
+            #     print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
+            #     # play sound to notify user
+            #     play_beep(1200, 1000)
+            #     return False
+            
+            if self.current_interface in self.actions_coordinates and command_type in self.actions_coordinates[self.current_interface]:
+                coords = self.actions_coordinates[self.current_interface][command_type]
+                pyautogui.moveTo(coords[0], coords[1])
+                pyautogui.click(button="left")
+                # pyautogui.write(enhanced_prompt.prompt)
+                #TODO REVERT!
+                pyautogui.write(command_params)
+                pyautogui.press("enter")
+            else:
+                print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
                 return False
-            
-            pyautogui.moveTo(self.actions_coordinates[command_type][0], self.actions_coordinates[command_type][1])
-            pyautogui.click(button="left")
-            pyautogui.write(enhanced_prompt.prompt)
-            pyautogui.press("enter")
             
             print("Starting Cascade monitoring since a 'type' command was detected")
             self.start_cascade_monitoring()
@@ -150,6 +212,22 @@ class CommandProcessor:
             btn_name = command_params.split(" ")[0]
             btn_selector = " ".join(command_params.split(" ")[1:])
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
+        elif command_type == "change":
+            # Command to change the current interface
+            interface_name = command_params.lower().strip()
+            if interface_name in CommandProcessor.SUPPORTED_INTERFACES:
+                success = self.initialize_interface(interface_name)
+                if success:
+                    print(f"\n==== INTERFACE CHANGED TO: '{interface_name.upper()}' ====\n")
+                else:
+                    print(f"Failed to change interface to {interface_name}")
+                    play_beep(1200, 1000)  # Error beep
+            else:
+                print(f"Unknown interface: '{interface_name}'. Valid options are 'windsurf' or 'lovable'")
+                play_beep(1200, 1000)  # Error beep
+                return False
+            
+            self.current_interface = interface_name
         else:
             print(f"Unknown command type: '{command_type}'")
             return False
