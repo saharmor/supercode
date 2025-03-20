@@ -66,7 +66,7 @@ class FastSpeechHandler:
         
         # Audio processing variables
         self.audio_buffer = []
-        self.energy_threshold = 500  # Energy level to detect speech
+        self.energy_threshold = 800  # Energy level to detect speech
         self.silent_chunks_threshold = int(self.silence_duration * self.rate / self.chunk_size)
         self.silent_chunks = 0
     
