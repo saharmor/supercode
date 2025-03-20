@@ -8,14 +8,15 @@ import os
 from openai import OpenAI
 import pyautogui
 import threading
-from computer_use_utils import get_coordinates_for_prompt
 from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 from pydantic import BaseModel
 from typing import Literal
+
+from computer_use_utils import get_coordinates_for_prompt
+from utils import play_beep
+
+load_dotenv()
 
 class EnhancedPrompt(BaseModel):
     prompt: str
@@ -95,7 +96,6 @@ class CommandProcessor:
                 )
                 
                 enhanced_data = completion.choices[0].message.parsed
-                print(f"\n==== ENHANCED PROMPT ====\n{enhanced_data.prompt}\n==== INTELLIGENCE LEVEL: {enhanced_data.requiredIntelligenceLevel} ====\n")
                 return enhanced_data
             except Exception as e:
                 print(f"Error parsing structured output: {e}")
@@ -130,7 +130,7 @@ class CommandProcessor:
             # Regular type command
             enhanced_prompt = self.enhance_user_prompt(command_params)
             if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
-                print("Invalid command - cannot enhance prompt")
+                print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
                 # play sound to notify user
                 play_beep(1200, 1000)
                 return False
