@@ -64,7 +64,6 @@ __pycache__/
 supersurf_env/
 *.egg-info/
 *.wav
-*.mp3
 *.mp4
 .env
 

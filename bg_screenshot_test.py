@@ -8,6 +8,7 @@ to detect specific content like the word "Done".
 """
 import os
 import sys
+import json
 import time
 import datetime
 import argparse
@@ -496,6 +497,11 @@ def analyze_image_for_text(image_path, object_description=None, initialize_if_ne
     Returns:
         tuple: (bool, str) - (Whether the object was detected, Full analysis response)
     """
+    
+    # Special case for Cascade monitoring
+    if object_description == "cascade_state":
+        return analyze_cascade_state(image_path, initialize_if_needed)
+        
     try:
         # Initialize Gemini if needed
         if initialize_if_needed:
@@ -541,7 +547,188 @@ def analyze_image_for_text(image_path, object_description=None, initialize_if_ne
         return False, f"Error: {str(e)}"
 
 
-def continuous_screenshot(title_substring=None, interval=1.0, output_dir="screenshots", prefix="", app_name=None, interactive=True, analyze=False, prompt=None):
+def analyze_cascade_state(image_path, initialize_if_needed=True, verbose=False):
+    """
+    Specialized function to analyze the state of Cascade AI assistant in a screenshot.
+    
+    Args:
+        image_path (str): Path to the image file.
+        initialize_if_needed (bool, optional): Whether to initialize Gemini if needed. Defaults to True.
+        
+    Returns:
+        tuple: (bool, str) - (Whether action is needed, State description: "user_input_required", "still_working", or "done")
+    """
+    try:
+        # Initialize Gemini if needed
+        if initialize_if_needed:
+            success = initialize_gemini_client()
+            if not success:
+                return False, "Failed to initialize Gemini client"
+        
+        # Load and prepare the image
+        with Image.open(image_path) as img:
+            # Ensure image is in RGB format for compatibility
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            
+            # Get Gemini model
+            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+            
+            # Build the specialized Cascade monitoring prompt
+            cascade_prompt = (
+                "You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. " 
+                "Determine the Cascade's current state based on visual cues in the right pane of the image. "
+                "Return the following state for the following scenarios: "
+                "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane"
+                "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
+                "'still_working' for all other cases"
+                "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
+                "- 'cascade_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
+                "- 'reasoning': a brief explanation for your decision "
+                "Example response format: "
+                "```json "
+                "{ "
+                "  \"cascade_state\": \"done\", "
+                "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
+                "} "
+                "``` "
+                "Only analyze the right panel and provide nothing but valid JSON in your response."
+            )
+            
+            # Get response from Gemini with timing
+            start_time = time.time()
+            response = model.generate_content([cascade_prompt, img])
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            if verbose:
+                print(f"Gemini analysis took {elapsed_time:.2f} seconds")
+            
+            response_text = response.text.strip().lower()
+            if verbose:
+                print(f"Gemini response: {response_text}")
+            
+            # Extract JSON from response text
+            try:
+                # Look for JSON content between triple backticks if present
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+                    json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+                else:
+                    json_content = response_text
+                
+                # Parse the JSON
+                gemini_response = json.loads(json_content)
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON response: {e}")
+                # Create a default response
+                gemini_response = {"cascade_state": "still_working", "reasoning": "Failed to parse response"}
+            # Extract the cascade state from JSON response
+            state = gemini_response["cascade_state"].lower()
+            
+            # Determine actions based on state
+            user_action_needed = state == "user_input_required"
+            done = state == "done"
+            
+            # Validate response matches expected format
+            if state not in ["user_input_required", "still_working", "done"]:
+                print(f"Warning: Unexpected state from Gemini: {state}")
+                state = "still_working"  # Default to still working if response is unclear
+                
+            return user_action_needed or done, state
+            
+    except Exception as e:
+        print(f"Error analyzing Cascade state: {e}")
+        return False, f"Error: {str(e)}"
+
+
+def monitor_cascade_state(interval=4.0, output_dir="screenshots", prefix="cascade_"):
+    """
+    Continuously monitor the state of Cascade AI assistant and notify when user input is required or when done.
+    
+    Args:
+        interval (float, optional): Default check interval in seconds. Defaults to 4.0.
+        output_dir (str, optional): Output directory for screenshots. Defaults to "screenshots".
+        prefix (str, optional): Prefix for screenshot filenames. Defaults to "cascade_".
+    """
+    try:
+        # Initialize Gemini API
+        gemini_initialized = initialize_gemini_client()
+        if not gemini_initialized:
+            print("⚠️ Could not initialize Gemini API. Cannot monitor Cascade state.")
+            return
+            
+        print("🔍 Starting Cascade state monitoring...")
+        print("   - Will notify when Cascade needs your input or is done")
+        print("   - Press Ctrl+C to stop monitoring")
+        
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        screenshot_count = 0
+        notification_count = 0
+        last_state = None
+        
+        while True:
+            try:
+                # Take a screenshot
+                screenshot_count += 1
+                image = capture_screen()
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"{prefix}{timestamp}_screenshot.png"
+                path = os.path.join(output_dir, filename)
+                
+                # Save the screenshot
+                image.save(path)
+                print(f"\rChecking Cascade state ({screenshot_count})...", end="")
+                
+                # Analyze the screenshot to determine Cascade state
+                _, state = analyze_cascade_state(path, False)  # No need to reinitialize
+                
+                if state != last_state:
+                    print(f"\nCascade state: {state}")
+                    last_state = state
+                
+                if state == "user_input_required":
+                    # User input is required - play sound and wait longer
+                    notification_count += 1
+                    print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Cascade needs your input!")
+                    # Use system beep instead of sound file
+                    if platform.system() == "Darwin":  # macOS
+                        subprocess.call(["afplay", "/System/Library/Sounds/Ping.aiff"])
+                    elif platform.system() == "Linux":
+                        subprocess.call(["paplay", "/usr/share/sounds/freedesktop/stereo/bell.oga"])
+                    elif platform.system() == "Windows":
+                        import winsound
+                        winsound.Beep(1000, 500)  # 1000 Hz for 500 milliseconds
+                    # Now wait longer before checking again
+                    time.sleep(20)
+                    
+                elif state == "done":
+                    # Task is complete
+                    print("\n✅ Cascade has completed its task!")
+                    sound_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_done.mp3")
+                    play_sound(sound_file)
+                    return  # Exit the monitoring loop
+                    
+                else:  # still_working
+                    # Cascade is still working, continue regular monitoring
+                    time.sleep(interval)
+                    
+            except KeyboardInterrupt:
+                print("\n\nMonitoring stopped by user.")
+                return
+                
+            except Exception as e:
+                print(f"\nError during monitoring: {e}")
+                time.sleep(interval)
+                
+    except KeyboardInterrupt:
+        print("\nMonitoring stopped by user.")
+        return
+
+
+def continuous_screenshot(title_substring=None, interval=1.0, output_dir="screenshots", prefix="", app_name=None, interactive=True, analyze=False, object_description=None):
     """
     Take continuous screenshots at regular intervals and optionally analyze them.
     
@@ -636,6 +823,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default="screenshots", help="Output directory")
     parser.add_argument("--continuous", action="store_true", help="Take continuous screenshots every second")
     parser.add_argument("--once", action="store_true", help="Take a single screenshot, analyze it, and exit")
+    parser.add_argument("--monitor-cascade", action="store_true", help="Monitor Cascade AI assistant state and notify when input is needed")
     parser.add_argument("--interval", type=float, default=1.0, help="Interval between screenshots in seconds (for continuous mode)")
     parser.add_argument("--prefix", default="", help="Prefix for the filename (for continuous mode)")
     parser.add_argument("--interactive", action="store_true", help="Interactively select window when multiple matches are found")
@@ -647,7 +835,9 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    if args.list:
+    if args.monitor_cascade:
+        monitor_cascade_state(args.interval, args.output_dir, args.prefix)
+    elif args.list:
         windows = get_window_list()
         print("Available windows:")
         for i, window in enumerate(windows):
