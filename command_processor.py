@@ -30,10 +30,10 @@ class CommandProcessor:
     # Default interface
     DEFAULT_IDE = 'windsurf'
     # DEFAULT_IDE = 'lovable'
-    SUPPORTED_INTERFACES = ["windsurf", "lovable"]
     
     INTERFACE_CONFIG = {
     "windsurf": {
+        "transcribed_similar_words": ["windsurf", "wind surf", "wind serve", "win surf"],
         "commands": {
             "type": {
                 "llm_selector": "Input box for the Cascade agent which starts with 'Ask anything'. Usually, it's in the right pane of the screen",
@@ -61,6 +61,7 @@ class CommandProcessor:
         
     },
     "lovable": {
+        "transcribed_similar_words": ["lovable", "loveable", "lavable"],
         "commands": {
             "type": {
                 "llm_selector": "The main text input field at the bottom left of the lovable interface which says 'Ask lovable...'",
@@ -90,7 +91,7 @@ class CommandProcessor:
 
 
     def __init__(self):
-        self.current_interface = CommandProcessor.DEFAULT_IDE
+        self.current_interface = os.getenv("DEFAULT_IDE", "windsurf")
         self.interface_config = CommandProcessor.INTERFACE_CONFIG
         
         # Initialize actions_coordinates with nested structure
@@ -152,7 +153,7 @@ class CommandProcessor:
             interface_state_prompt = self.interface_config[self.current_interface]['interface_state_prompt']
             self.interface_monitor_thread = threading.Thread(
                 target=monitor_coding_generation_state,
-                args=(interface_state_prompt, 3.0, "screenshots", self.current_interface)
+                args=(interface_state_prompt, 2.0, "screenshots", self.current_interface)
             )
             self.interface_monitor_thread.daemon = True
             self.interface_monitor_thread.start()
@@ -214,20 +215,23 @@ class CommandProcessor:
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
         elif command_type == "change":
             # Command to change the current interface
-            interface_name = command_params.lower().strip()
-            if interface_name in CommandProcessor.SUPPORTED_INTERFACES:
-                success = self.initialize_interface(interface_name)
-                if success:
-                    print(f"\n==== INTERFACE CHANGED TO: '{interface_name.upper()}' ====\n")
-                else:
-                    print(f"Failed to change interface to {interface_name}")
-                    play_beep(1200, 1000)  # Error beep
+            target_interface = command_params.lower().strip()
+            for interface_name in CommandProcessor.INTERFACE_CONFIG.keys():
+                if target_interface in CommandProcessor.INTERFACE_CONFIG[interface_name].get("transcribed_similar_words", []):
+                    target_interface = interface_name
+                    
+            success = self.initialize_interface(target_interface)
+            if success:
+                print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
+                # play mac voice stating voice changes to interface
+                os.system(f"say 'Voice changed to {target_interface}'")
+                self.current_interface = target_interface
             else:
                 print(f"Unknown interface: '{interface_name}'. Valid options are 'windsurf' or 'lovable'")
                 play_beep(1200, 1000)  # Error beep
                 return False
             
-            self.current_interface = interface_name
+            self.current_interface = target_interface
         else:
             print(f"Unknown command type: '{command_type}'")
             return False

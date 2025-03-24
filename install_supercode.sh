@@ -1,7 +1,7 @@
 #!/bin/bash
-# Installation script for SuperSurf
+# Installation script for SuperCode
 
-echo "Installing SuperSurf dependencies..."
+echo "Installing SuperCode dependencies..."
 
 # Check if Python3 is installed
 if ! command -v python3 &> /dev/null; then
@@ -21,4 +21,4 @@ if [ ! -f ".env" ]; then
 fi
 
 echo "Dependencies installed successfully!"
-echo "To run SuperSurf, use: ./run_supersurf.sh"
+echo "To run SuperCode, use: ./run_supercode.sh"

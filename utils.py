@@ -1,6 +1,8 @@
 import platform
 import subprocess
 from openai import OpenAI
+from pydantic import BaseModel
+from typing import Literal
 
 def play_beep(frequency, duration):
     system = platform.system()
@@ -12,7 +14,7 @@ def play_beep(frequency, duration):
         import winsound
         winsound.Beep(frequency, duration)  # frequency in Hz, duration in milliseconds
 
-def enhance_user_prompt(self, command_text):
+def enhance_user_prompt(command_text):
     """
     Enhance a raw user prompt by using GPT-4o Mini to structure it for a coding model.
     
@@ -22,6 +24,10 @@ def enhance_user_prompt(self, command_text):
     Returns:
         str: The enhanced, structured prompt.
     """
+    class EnhancedPrompt(BaseModel):
+        prompt: str
+        requiredIntelligenceLevel: Literal["low", "medium", "high"]
+
     try:
         client = OpenAI()
         

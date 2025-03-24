@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SuperSurf - A simple macOS menu bar app for whisper_streaming.py
+SuperCode - A simple macOS menu bar app for whisper_streaming.py
 This app provides a single toggle button to start/stop the whisper streaming functionality.
 """
 
@@ -20,7 +20,7 @@ from command_processor import CommandProcessor
 class SuperSurfApp(rumps.App):
     def __init__(self):
         """Initialize the Whisper Menu App"""
-        super(SuperSurfApp, self).__init__("SuperSurf", 
+        super(SuperSurfApp, self).__init__("SuperCode", 
                                           icon=None,
                                           title=None,
                                           quit_button=rumps.MenuItem("Quit", key="q"))
@@ -41,11 +41,11 @@ class SuperSurfApp(rumps.App):
         if self.is_listening:
             self.stop_listening()
             sender.title = "Start Listening"
-            self.title = "SuperSurf"
+            self.title = "SuperCode"
         else:
             self.start_listening()
             sender.title = "Stop Listening"
-            self.title = "SuperSurf"
+            self.title = "SuperCode"
     
     def start_listening(self):
         """Start listening for voice commands"""
@@ -63,7 +63,7 @@ class SuperSurfApp(rumps.App):
         use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
         service_name = "OpenAI Whisper API" if use_openai_api else "Google Speech Recognition"
         
-        rumps.notification("SuperSurf", f"Voice Recognition Active ({service_name})", "Say commands starting with 'activate'")
+        rumps.notification("SuperCode", f"Voice Recognition Active ({service_name})", "Say commands starting with 'activate'")
     
     def stop_listening(self):
         """Stop listening for voice commands"""
@@ -77,7 +77,7 @@ class SuperSurfApp(rumps.App):
             self.handler.stop()
             self.handler = None
             
-        rumps.notification("SuperSurf", "Voice Recognition Stopped", "Click 'Start Listening' to resume")
+        rumps.notification("SuperCode", "Voice Recognition Stopped", "Click 'Start Listening' to resume")
     
     def run_whisper_handler(self):
         """Run the whisper streaming handler in a separate thread"""
@@ -109,7 +109,7 @@ class SuperSurfApp(rumps.App):
             traceback.print_exc()
             
             # Show error notification
-            rumps.notification("SuperSurf", "Error", f"Error: {str(e)}")
+            rumps.notification("SuperCode", "Error", f"Error: {str(e)}")
             
             # Reset state
             self.is_listening = False
@@ -118,7 +118,7 @@ class SuperSurfApp(rumps.App):
     def show_about(self, _):
         """Show about information"""
         about = """
-ABOUT SuperSurf
+ABOUT SuperCode
 
 A simple macOS menu bar app for whisper_streaming.py.
 This app provides a single toggle button to start/stop 
@@ -132,7 +132,7 @@ Usage:
 
 Example: Say "surf hello world"
         """
-        rumps.alert(title="About SuperSurf", message=about, ok="Got it!")
+        rumps.alert(title="About SuperCode", message=about, ok="Got it!")
 
 
 class MenuBarCommandProcessor(CommandProcessor):
@@ -147,19 +147,19 @@ class MenuBarCommandProcessor(CommandProcessor):
         result = super().execute_command(command_text)
         
         # Show a notification
-        rumps.notification("SuperSurf", "Command Detected", f"'{command_text}'")
+        rumps.notification("SuperCode", "Command Detected", f"'{command_text}'")
         
         return result
 
 
 def main():
-    """Initialize and start the SuperSurf app"""
+    """Initialize and start the SuperCode app"""
     try:
         # Initialize and run the app
         app = SuperSurfApp()
         app.run()
     except Exception as e:
-        print(f"Error initializing SuperSurf: {str(e)}")
+        print(f"Error initializing SuperCode: {str(e)}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
