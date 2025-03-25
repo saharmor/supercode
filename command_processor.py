@@ -204,7 +204,6 @@ class CommandProcessor:
         """
         print(f"\n==== EXECUTING COMMAND: '{command_text}' ====\n")
         
-        # Add command to history
         self.command_history.append(command_text)
         
         command_type = command_text.split(" ")[0]
@@ -242,7 +241,6 @@ class CommandProcessor:
             btn_selector = " ".join(command_params.split(" ")[1:])
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
         elif command_type == "change":
-            # Command to change the current interface
             target_interface = command_params.lower().strip()
             for interface_name in CommandProcessor.INTERFACE_CONFIG.keys():
                 if target_interface in CommandProcessor.INTERFACE_CONFIG[interface_name].get("transcribed_similar_words", []):
@@ -251,7 +249,6 @@ class CommandProcessor:
             success = self.initialize_interface(target_interface)
             if success:
                 print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
-                # play mac voice stating voice changes to interface
                 os.system(f"say 'Voice changed to {target_interface}'")
                 self.current_interface = target_interface
             else:

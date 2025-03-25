@@ -599,7 +599,6 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
                 else:
                     json_content = response_text
                 
-                # Parse the JSON
                 gemini_response = json.loads(json_content)
             except json.JSONDecodeError as e:
                 print(f"Error parsing JSON response: {e}")
@@ -609,7 +608,6 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
                 
             state = gemini_response["interface_state"].lower()
             
-            # Determine actions based on state
             user_action_needed = state == "user_input_required"
             done = state == "done"
             
@@ -683,7 +681,6 @@ def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output
                     last_state = state
                 
                 if state == "user_input_required":
-                    # User input is required - play sound and wait longer
                     notification_count += 1
                     print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Coding generation needs your input!")
                     # Use system beep instead of sound file
@@ -692,14 +689,12 @@ def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output
                     time.sleep(10)
                     
                 elif state == "done":
-                    # Task is complete
                     print("\n✅ Coding generation has completed its task!")
                     sound_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_done.mp3")
                     play_sound(sound_file)
                     return  # Exit the monitoring loop
                     
                 else:  # still_working
-                    # Coding generation is still working, continue regular monitoring
                     time.sleep(interval)
                     
             except KeyboardInterrupt:
@@ -772,7 +767,6 @@ def continuous_screenshot(title_substring=None, interval=1.0, output_dir="screen
                 if path:
                     saved_count += 1
                     
-                    # Analyze the screenshot with Gemini if requested
                     if analyze and path:
                         print(f"\rAnalyzing screenshot {screenshot_count}...", end="")
                         found, analysis = analyze_image_for_text(path, args.object, False)  # No need to reinitialize
