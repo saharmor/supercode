@@ -97,7 +97,6 @@ class ClaudeComputerUse:
             
             # Extract coordinates from Claude's response
             text_response = response.content[0].text
-            print(f"Claude's response: {text_response}")
             
             # Parse X,Y coordinates from response
             if "X=" in text_response and "Y=" in text_response:

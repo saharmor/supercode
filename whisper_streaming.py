@@ -48,15 +48,28 @@ class FastSpeechHandler:
         # Load environment variables for transcription service
         self.use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.openai_whisper_model = os.getenv("OPENAI_WHISPER_MODEL", "whisper-1")
+        self.openai_transcription_model = os.getenv("OPENAI_TRANSCRIPTION_MODEL", "whisper-1")
         
         # Configure OpenAI API if enabled
         if self.use_openai_api:
-            if not self.openai_api_key:
+            if not self.openai_api_key or self.openai_api_key.strip() == "":
                 print("Warning: USE_OPENAI_API is set to true but OPENAI_API_KEY is not set.")
                 print("Falling back to Google speech recognition.")
                 self.use_openai_api = False
-            self.openai_client = openai.Client(api_key=self.openai_api_key)
+            else:
+                # Basic validation of API key format
+                if not self.openai_api_key.startswith('sk-') or len(self.openai_api_key) < 20:
+                    print("Warning: OPENAI_API_KEY doesn't look valid (should start with 'sk-' and be longer).")
+                    print("Will try to use it anyway, but may fail.")
+                
+                try:
+                    self.openai_client = openai.Client(api_key=self.openai_api_key)
+                except Exception as e:
+                    print(f"Error initializing OpenAI client: {e}")
+                    print("Falling back to Google speech recognition.")
+                    self.use_openai_api = False
+        else:
+            print("Using Google speech recognition (OpenAI API not enabled).")
         
         # State variables
         self.listening_for_commands = False
@@ -184,17 +197,31 @@ class FastSpeechHandler:
         if not self.audio_buffer:
             return
         
-        # Create a temporary WAV file
+        # Create a temporary WAV file - OpenAI requires specific formats
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         try:
+            # Ensure we're using a compatible format for OpenAI (16kHz, mono)
             with wave.open(temp_file.name, 'wb') as wf:
-                wf.setnchannels(self.channels)
-                wf.setsampwidth(self.audio.get_sample_size(self.format))
-                wf.setframerate(self.rate)
+                wf.setnchannels(self.channels)  # Mono
+                wf.setsampwidth(self.audio.get_sample_size(self.format))  # 16-bit
+                wf.setframerate(self.rate)  # 16kHz
                 wf.writeframes(b''.join(self.audio_buffer))
             
-            # Queue for transcription - this happens very quickly
-            self.transcription_queue.put(temp_file.name)
+            # Check file size - OpenAI has limits
+            file_size = os.path.getsize(temp_file.name)
+            
+            # Only send if file is not too small (likely noise) or too large
+            if 10 * 1024 <= file_size <= 25 * 1024 * 1024:  # 10KB to 25MB
+                # Queue for transcription - this happens very quickly
+                self.transcription_queue.put(temp_file.name)
+            else:
+                if file_size < 10 * 1024:
+                    print("Audio file too small, likely just noise. Skipping transcription.")
+                else:
+                    print("Audio file too large for API. Skipping transcription.")
+                # Clean up temp file
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
         
         except Exception as e:
             print(f"Error saving audio: {str(e)}")
@@ -222,15 +249,21 @@ class FastSpeechHandler:
                     audio_data = self.recognizer.record(source)
                     try:
                         if self.use_openai_api:
-                            # Open the temporary audio file for Whisper API
-                            with open(audio_file, 'rb') as file:
+                            try:
+                                audio_file_obj = open(audio_file, 'rb')        
                                 result = self.openai_client.audio.transcriptions.create(
-                                    model=self.openai_whisper_model,
-                                    file=file,
+                                    model=self.openai_transcription_model,
+                                    file=audio_file_obj,
                                     language="en",
                                     # prompt=""
                                 )
+                                
                                 text = result.text
+                            except Exception as api_call_error:
+                                print(f"API call error: {str(api_call_error)}")
+                                print("Falling back to Google speech recognition...")
+                                text = self.recognizer.recognize_google(audio_data)
+                                print(f"Google fallback succeeded: '{text}'")
                         else:
                             text = self.recognizer.recognize_google(audio_data)
                         
@@ -238,20 +271,25 @@ class FastSpeechHandler:
                         clean_text = ''.join(c for c in text if c.isalnum() or c.isspace()).lower()
                         delta = time.time() - start_time
                         print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
-                        
                         # Process the recognized text
                         self._process_recognized_text(clean_text)
                     except sr.UnknownValueError:
                         print("Speech not recognized")
                     except Exception as e:
                         print(f"Error in transcription: {str(e)}")
-                
+                        # Add more detailed error logging
+                        import traceback
+                        print(f"Detailed transcription error: {traceback.format_exc()}")
+                    finally:
+                        # Always close file
+                        audio_file_obj.close()
+                        
+                        
                 # Clean up the temp file
                 if os.path.exists(audio_file):
                     os.unlink(audio_file)
                 
                 self.transcription_queue.task_done()
-            
             except Exception as e:
                 print(f"Error in transcription loop: {str(e)}")
                 time.sleep(0.5)
@@ -259,6 +297,7 @@ class FastSpeechHandler:
     def _process_recognized_text(self, text):
         """
         Process recognized text to extract commands using the CommandQueue.
+        Also handles displaying ignored transcriptions when no activation word is found.
         """
         # Process text and execute any commands found
         if self.command_processor:
@@ -356,7 +395,6 @@ class SpeechActivationHandler:
                     
                     # Process the recognized text
                     self._process_recognized_text(phrase)
-                    
                 except sr.UnknownValueError:
                     # If we're in command mode and got silence, check if we should process the command
                     if self.listening_for_commands and self.current_command:
