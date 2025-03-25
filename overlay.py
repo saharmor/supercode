@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 """
-Standalone status overlay for SuperCode application.
-This runs completely independently of the Rumps menu bar app.
+Status overlay for SuperCode application.
+Provides the visual interface for the overlay window.
 """
 
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QTimer, QPoint, QRectF, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush, QFont
-import threading
-import time
-import math
-import numpy as np
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtCore import Qt, QTimer, QRectF
+from PyQt5.QtGui import QPainter, QColor, QPainterPath, QFont
 import sys
 import os
 import json
 import argparse
-from typing import List, Optional, Callable
 
 class StatusOverlay(QWidget):
     """
-    Standalone status overlay that shows:
+    Status overlay that shows:
     - Status visualization
     - Current status text (Listening, Recording, Transcribing, Executing)
     """
@@ -238,10 +233,10 @@ class StatusOverlay(QWidget):
             self.update()
 
 def main():
-    """Run the standalone overlay"""
+    """Run the overlay"""
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Standalone status overlay")
+    parser = argparse.ArgumentParser(description="Status overlay")
     parser.add_argument("--status-file", help="Path to status file for communication")
     parser.add_argument("--message-file", help="Path to message file for sending messages back")
     parser.add_argument("--size", type=int, default=180, help="Size of the overlay window")
