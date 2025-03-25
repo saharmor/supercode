@@ -20,8 +20,8 @@ class OverlayManager:
     """
     
     # Status constants
-    STATUS_IDLE = "Listening for 'activate'"
-    STATUS_RECORDING = "Recording..."
+    STATUS_IDLE = "Waiting for 'activate'"
+    STATUS_RECORDING = "Listening..."
     STATUS_TRANSCRIBING = "Transcribing..."
     STATUS_EXECUTING = "Executing command"
     
