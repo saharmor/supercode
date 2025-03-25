@@ -132,7 +132,6 @@ class OverlayManager:
                     "status": status,
                     "info": additional_info
                 }))
-            print(f"Wrote status update: {status} - {additional_info}")
         except Exception as e:
             print(f"Error updating status file: {e}")
     

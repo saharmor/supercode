@@ -8,8 +8,6 @@ import rumps
 import threading
 import time
 import os
-import sys
-import numpy as np
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,8 +15,8 @@ load_dotenv()
 # Import the whisper streaming functionality and command processing
 from whisper_streaming import FastSpeechHandler
 from command_processor import CommandProcessor
-# Use our new overlay manager instead of the old one
-from enhanced_overlay import OverlayManager
+# Import the overlay manager
+from overlay_manager import OverlayManager
 
 class SuperCodeApp(rumps.App):
     def __init__(self):
