@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Command processor for SuperSurf application.
+Command processor for SuperCode application.
 Handles the execution of commands from transcribed speech.
 """
 
@@ -45,6 +45,34 @@ class CommandProcessor:
                 "Determine the Cascade's current state based on visual cues in the right pane of the image. "
                     "Return the following state for the following scenarios: "
                     "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane"
+                    "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
+                    "'still_working' for all other cases"
+                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
+                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
+                    "- 'reasoning': a brief explanation for your decision "
+                    "Example response format: "
+                    "```json "
+                    "{ "
+                "  \"interface_state\": \"done\", "
+                    "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
+                    "} "
+                    "``` "
+                    "Only analyze the right panel and provide nothing but valid JSON in your response."
+        
+    },
+    "cursor": {
+        "transcribed_similar_words": ["cursor"],
+        "commands": {
+            "type": {
+                "llm_selector": "Input box for the Cursor Agent which starts with 'Plan, search, build anything'. Usually, it's in the right pane of the screen",
+                "description": "Text input field for sending commands to Cursor"
+            },
+        },
+        "interface_state_prompt": 
+            "You are analyzing a screenshot of the Cursor AI coding assistant interface. You only care about the right panel. IGNORE ALL THE REST OF THE SCREENSHOT. " 
+                "Determine the Cursor's current state based on visual cues in the right pane of the image. "
+                    "Return the following state for the following scenarios: "
+                    "'user_input_required' if there is a Cancel and Run buttons or 'Generating' text in the bottm side of the right pane, above the input box"
                     "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
                     "'still_working' for all other cases"
                     "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
@@ -135,10 +163,10 @@ class CommandProcessor:
         return True
 
         
-    def start_cascade_monitoring(self):
+    def start_ide_monitoring(self):
         """
-        Start a background thread that monitors the Cascade state until it's done.
-        Uses the monitor_cascade_state function from bg_screenshot_test.py.
+        Start a background thread that monitors the IDE state until it's done.
+        Uses the monitor_ide_state function from monitor_ide_state.py.
         """
         try:
             # Import the function here to avoid circular imports
@@ -146,7 +174,7 @@ class CommandProcessor:
             if sys_path not in os.sys.path:
                 os.sys.path.append(sys_path)
                 
-            from bg_screenshot_test import monitor_coding_generation_state
+            from monitor_ide_state import monitor_coding_generation_state
             
             # Start monitoring in a background thread
             # Create the monitoring thread with correct arguments
@@ -197,14 +225,14 @@ class CommandProcessor:
                 # pyautogui.write(enhanced_prompt.prompt)
                 #TODO REVERT!
                 pyautogui.write(command_params)
-                pyautogui.press("enter")
+                # pyautogui.press("enter")
             else:
                 print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
                 return False
             
-            print("Starting Cascade monitoring since a 'type' command was detected")
-            self.start_cascade_monitoring()
+            print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
+            self.start_ide_monitoring()
         elif command_type == "click":
             command_params = command_params.split(" ")[0]
             pyautogui.moveTo(self.buttons[command_params][0], self.buttons[command_params][1])

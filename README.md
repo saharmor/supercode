@@ -1,6 +1,6 @@
-# SuperSurf
+# SuperCode
 
-SuperSurf is a simple macOS menu bar application that provides voice command functionality using the SpeechRecognition library. It allows you to speak commands starting with the word "surf" and displays notifications for recognized commands.
+SuperCode is a simple macOS menu bar application that provides voice command functionality using the SpeechRecognition library. It allows you to speak commands starting with the word "surf" and displays notifications for recognized commands.
 
 ## Features
 
@@ -13,14 +13,14 @@ SuperSurf is a simple macOS menu bar application that provides voice command fun
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/supersurf.git
-cd supersurf
+git clone https://github.com/yourusername/supercode.git
+cd supercode
 ```
 
 2. Install the required dependencies:
 ```bash
-chmod +x install_supersurf.sh
-./install_supersurf.sh
+chmod +x install_supercode.sh
+./install_supercode.sh
 ```
 
 ## Usage
@@ -34,10 +34,10 @@ chmod +x install_supersurf.sh
 
 2. Run the application:
 ```bash
-./run_supersurf.sh
+./run_supercode.sh
 ```
 
-3. Click on the "SuperSurf" icon in the menu bar
+3. Click on the "SuperCode" icon in the menu bar
 4. Select "Start Listening" to begin voice recognition
 5. Speak commands starting with "activate" (e.g., "activate hello world")
 6. The app will display notifications for recognized commands

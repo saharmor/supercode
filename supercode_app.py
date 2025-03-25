@@ -17,10 +17,10 @@ load_dotenv()
 from whisper_streaming import FastSpeechHandler
 from command_processor import CommandProcessor
 
-class SuperSurfApp(rumps.App):
+class SuperCodeApp(rumps.App):
     def __init__(self):
         """Initialize the Whisper Menu App"""
-        super(SuperSurfApp, self).__init__("SuperCode", 
+        super(SuperCodeApp, self).__init__("SuperCode", 
                                           icon=None,
                                           title=None,
                                           quit_button=rumps.MenuItem("Quit", key="q"))
@@ -156,7 +156,7 @@ def main():
     """Initialize and start the SuperCode app"""
     try:
         # Initialize and run the app
-        app = SuperSurfApp()
+        app = SuperCodeApp()
         app.run()
     except Exception as e:
         print(f"Error initializing SuperCode: {str(e)}")

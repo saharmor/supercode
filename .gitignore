@@ -22,7 +22,7 @@ wheels/
 *.egg
 
 # Virtual environment
-supersurf_env/
+supercode_env/
 venv/
 ENV/
 
@@ -35,7 +35,7 @@ ENV/
 .AppleDouble
 .LSOverride
 Icon
-SuperSurf.app/
+SuperCode.app/
 icon.iconset/
 
 # Logs and databases
@@ -55,13 +55,11 @@ tmp/
 .temp/
 temp/
 
-# Arquivos específicos do projeto
 *.wav
-*.mp3
 *.mp4
 __pycache__/
 *.pyc
-supersurf_env/
+supercode_env/
 *.egg-info/
 *.wav
 *.mp4
