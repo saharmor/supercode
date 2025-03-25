@@ -189,6 +189,11 @@ class CommandProcessor:
                 return False
             
             self.current_interface = target_interface
+        elif command_type == "stop":
+            # Stop command is handled in EnhancedSpeechHandler
+            print("Stopping voice recognition")
+            os.system("say 'Voice recognition stopped'")
+            return True
         else:
             print(f"Unknown command type: '{command_type}'")
             return False
@@ -225,7 +230,8 @@ class CommandQueue:
         commands = []
         
         # Check for activation word
-        if self.activation_word in text:
+        # Split text into words and check if activation word exists as a separate word
+        if self.activation_word in text.lower().split():
             # Split the text by the activation word
             parts = text.split(self.activation_word)
             

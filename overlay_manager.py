@@ -24,6 +24,7 @@ class OverlayManager:
     STATUS_RECORDING = "Listening..."
     STATUS_TRANSCRIBING = "Transcribing..."
     STATUS_EXECUTING = "Executing command"
+    STATUS_STOPPED = "Voice Recognition Stopped"
     
     def __init__(self):
         """Initialize the overlay manager"""
@@ -32,6 +33,7 @@ class OverlayManager:
         self.current_status = self.STATUS_IDLE
         self.additional_info = ""
         self.close_handler = None  # Function to call when close message is received
+        self.start_handler = None  # Function to call when start message is received
         
         # Create a temporary file for communication
         self.status_file = tempfile.NamedTemporaryFile(delete=False, mode='w+')
@@ -51,6 +53,10 @@ class OverlayManager:
         """Set the function to call when overlay is closed"""
         self.close_handler = handler_func
     
+    def set_start_handler(self, handler_func):
+        """Set the function to call when start listening button is clicked"""
+        self.start_handler = handler_func
+    
     def show_overlay(self):
         """
         Show the overlay by launching overlay.py as a separate process
@@ -59,7 +65,6 @@ class OverlayManager:
             print("Overlay process already running")
             return
             
-        print("Starting overlay process...")
         
         # Create the command to run the overlay with our status file
         cmd = [
@@ -86,7 +91,6 @@ class OverlayManager:
         self.update_status(self.current_status, self.additional_info)
         
         self.is_visible = True
-        print(f"Overlay process started with PID: {self.overlay_process.pid}")
     
     def hide_overlay(self):
         """Hide the overlay by terminating its process"""
@@ -94,7 +98,6 @@ class OverlayManager:
             print("No overlay process to hide")
             return
             
-        print("Terminating overlay process...")
         try:
             # Stop message monitoring
             self.should_monitor = False
@@ -113,7 +116,6 @@ class OverlayManager:
                 else:
                     os.kill(self.overlay_process.pid, signal.SIGKILL)
                 
-            print("Overlay process terminated")
             self.is_visible = False
         except Exception as e:
             print(f"Error hiding overlay: {e}")
@@ -136,7 +138,7 @@ class OverlayManager:
             print(f"Error updating status file: {e}")
     
     def _monitor_messages(self):
-        """Monitor the message file for close signals from the overlay"""
+        """Monitor the message file for signals from the overlay"""
         last_modified = os.path.getmtime(self.message_file.name)
         
         while self.should_monitor:
@@ -153,6 +155,14 @@ class OverlayManager:
                             if self.close_handler:
                                 # Call in the main thread
                                 self.close_handler()
+                            # Reset the message
+                            with open(self.message_file.name, 'w') as f:
+                                f.write(json.dumps({"message": ""}))
+                        elif message == "START_LISTENING":
+                            print("Received start listening signal from overlay")
+                            if self.start_handler:
+                                # Call in the main thread
+                                self.start_handler()
                             # Reset the message
                             with open(self.message_file.name, 'w') as f:
                                 f.write(json.dumps({"message": ""}))

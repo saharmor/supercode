@@ -25,6 +25,7 @@ class StatusOverlay(QWidget):
     STATUS_RECORDING = "Recording..."
     STATUS_TRANSCRIBING = "Transcribing..."
     STATUS_EXECUTING = "Executing command"
+    STATUS_STOPPED = "Voice Recognition Stopped"
     
     # Colors
     COLOR_BG = QColor("#efe0c2")  # Beige background
@@ -33,6 +34,8 @@ class StatusOverlay(QWidget):
     COLOR_RECORDING = QColor(76, 175, 80)  # Green (changed from red)
     COLOR_CLOSE = QColor(150, 150, 150)  # Gray for close button
     COLOR_IDLE = QColor(33, 150, 243)  # Blue for idle state
+    COLOR_BUTTON = QColor(33, 150, 243)  # Blue for buttons
+    COLOR_BUTTON_TEXT = QColor(255, 255, 255)  # White text for buttons
     
     def __init__(self, size=200, status_file=None, message_file=None):
         """
@@ -205,19 +208,39 @@ class StatusOverlay(QWidget):
         status_font.setWeight(QFont.DemiBold)
         painter.setFont(status_font)
         
-        status_x = padding + 20
-        if self.current_status == self.STATUS_EXECUTING or self.current_status == self.STATUS_IDLE:
-            status_x += 20  # Add space after the dot
-        
-        painter.drawText(QRectF(status_x, padding + 20, width - 40, 35), Qt.AlignLeft | Qt.AlignVCenter, self.current_status)
+        # Center the status text
+        painter.drawText(QRectF(padding, padding + 20, width, 35), Qt.AlignCenter, self.current_status)
         
         # Draw additional info (command)
         if self.additional_info:
             painter.setPen(self.COLOR_TEXT)
             info_font = QFont("SF Pro Text", 15)  # Bigger font for command text
             painter.setFont(info_font)
-            text_rect = QRectF(padding + 20, padding + 55, width - 40, 50)
-            painter.drawText(text_rect, Qt.AlignLeft | Qt.TextWordWrap, self.additional_info)
+            # Center the command text
+            text_rect = QRectF(padding, padding + 55, width, 50)
+            painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.additional_info)
+            
+        # Draw Start Listening button when voice recognition is stopped
+        if self.current_status == self.STATUS_STOPPED:
+            # Calculate button rect
+            button_width = 160
+            button_height = 40
+            button_x = padding + (width - button_width) / 2
+            button_y = padding + height - button_height - 15  # 15px from bottom
+            
+            # Draw button background
+            button_path = QPainterPath()
+            button_rect = QRectF(button_x, button_y, button_width, button_height)
+            button_path.addRoundedRect(button_rect, 10, 10)
+            
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(self.COLOR_BUTTON)
+            painter.fillPath(button_path, self.COLOR_BUTTON)
+            
+            # Draw button text
+            painter.setPen(self.COLOR_BUTTON_TEXT)
+            painter.setFont(QFont("SF Pro Display", 14, QFont.DemiBold))
+            painter.drawText(button_rect, Qt.AlignCenter, "Start Listening")
         
         # Draw close button
         painter.setPen(self.COLOR_CLOSE)
@@ -236,6 +259,22 @@ class StatusOverlay(QWidget):
             # Send a close event message via file
             self.send_close_signal()
             return
+            
+        # Check if the status is stopped and click is on the Start Listening button
+        if self.current_status == self.STATUS_STOPPED:
+            # Calculate button rect
+            button_width = 160
+            button_height = 40
+            height = 120
+            button_x = padding + (width - button_width) / 2
+            button_y = padding + height - button_height - 15  # 15px from bottom
+            
+            # Check if click is inside the button
+            if (event.x() >= button_x and event.x() <= button_x + button_width and
+                event.y() >= button_y and event.y() <= button_y + button_height):
+                # Send a start listening event message
+                self.send_start_listening_signal()
+                return
         
         # Start dragging
         if event.button() == Qt.LeftButton:
@@ -268,6 +307,19 @@ class StatusOverlay(QWidget):
         
         # Exit this process
         QApplication.quit()
+        
+    def send_start_listening_signal(self):
+        """Send a signal that the Start Listening button was clicked"""
+        print("Start Listening button clicked")
+        
+        # Write start message to file if we have one
+        if self.message_file:
+            try:
+                with open(self.message_file, 'w') as f:
+                    f.write(json.dumps({"message": "START_LISTENING"}))
+                print("Wrote START_LISTENING message to file")
+            except Exception as e:
+                print(f"Error writing start message: {e}")
     
     def update_status(self, status, additional_info=""):
         """
