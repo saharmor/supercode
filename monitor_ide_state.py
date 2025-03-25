@@ -684,7 +684,7 @@ def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output
                     notification_count += 1
                     print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Coding generation needs your input!")
                     # Use system beep instead of sound file
-                    play_beep(1000, 800)
+                    play_beep(1000, 1200)
                     # Now wait longer before checking again
                     time.sleep(10)
                     
