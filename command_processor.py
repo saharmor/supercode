@@ -7,10 +7,11 @@ Handles the execution of commands from transcribed speech.
 import os
 import pyautogui
 import threading
+import json
 from dotenv import load_dotenv
 
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Dict, Any
 
 from computer_use_utils import get_coordinates_for_prompt
 from utils import play_beep, enhance_user_prompt
@@ -31,96 +32,11 @@ class CommandProcessor:
     DEFAULT_IDE = 'windsurf'
     # DEFAULT_IDE = 'lovable'
     
-    INTERFACE_CONFIG = {
-    "windsurf": {
-        "transcribed_similar_words": ["windsurf", "wind surf", "wind serve", "win surf"],
-        "commands": {
-            "type": {
-                "llm_selector": "Input box for the Cascade agent which starts with 'Ask anything'. Usually, it's in the right pane of the screen",
-                "description": "Text input field for sending commands to Cascade"
-            },
-        },
-        "interface_state_prompt": 
-            "You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. " 
-                "Determine the Cascade's current state based on visual cues in the right pane of the image. "
-                    "Return the following state for the following scenarios: "
-                    "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane"
-                    "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
-                    "'still_working' for all other cases"
-                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
-                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
-                    "- 'reasoning': a brief explanation for your decision "
-                    "Example response format: "
-                    "```json "
-                    "{ "
-                "  \"interface_state\": \"done\", "
-                    "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
-                    "} "
-                    "``` "
-                    "Only analyze the right panel and provide nothing but valid JSON in your response."
-        
-    },
-    "cursor": {
-        "transcribed_similar_words": ["cursor"],
-        "commands": {
-            "type": {
-                "llm_selector": "Input box for the Cursor Agent which starts with 'Plan, search, build anything'. Usually, it's in the right pane of the screen",
-                "description": "Text input field for sending commands to Cursor"
-            },
-        },
-        "interface_state_prompt": 
-            "You are analyzing a screenshot of the Cursor AI coding assistant interface. You only care about the right panel. IGNORE ALL THE REST OF THE SCREENSHOT. " 
-                "Determine the Cursor's current state based on visual cues in the right pane of the image. "
-                    "Return the following state for the following scenarios: "
-                    "'user_input_required' if there is a Cancel and Run buttons or 'Generating' text in the bottm side of the right pane, above the input box"
-                    "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
-                    "'still_working' for all other cases"
-                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
-                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
-                    "- 'reasoning': a brief explanation for your decision "
-                    "Example response format: "
-                    "```json "
-                    "{ "
-                "  \"interface_state\": \"done\", "
-                    "  \"reasoning\": \"I can see a thumbs-up/thumbs-down icons in the right panel\" "
-                    "} "
-                    "``` "
-                    "Only analyze the right panel and provide nothing but valid JSON in your response."
-        
-    },
-    "lovable": {
-        "transcribed_similar_words": ["lovable", "loveable", "lavable"],
-        "commands": {
-            "type": {
-                "llm_selector": "The main text input field at the bottom left of the lovable interface which says 'Ask lovable...'",
-                "description": "Text input field for sending messages to lovable"
-            },
-        },
-        "interface_state_prompt":
-            "You are analyzing a screenshot of the Lovable coding assistant interface. You only care about the left panel chat panel for sending messages to Lovable. IGNORE ALL THE REST OF THE SCREENSHOT. " 
-                "Determine the Lovable's current state based on visual cues in the left pane of the image. "
-                    "Return the following state for the following scenarios: "
-                    # "'user_input_required' if there is an accept and reject button or 'waiting on response' text in the left handside pane"
-                    "'still_working' if you see a small white circle above the chat input or a stop button at the bottom left of the input box"
-                    "'done' for all other cases"
-                    "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
-                "- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' "
-                    "- 'reasoning': a brief explanation for your decision "
-                    "Example response format: "
-                    "```json "
-                    "{ "
-                "  \"interface_state\": \"still_working\", "
-                    "  \"reasoning\": \"I can see a stop button or spinner in the left panel\" "
-                    "} "
-                    "``` "
-                    "Only analyze the left panel and provide nothing but valid JSON in your response."
-    }
-}
-
-
     def __init__(self):
-        self.current_interface = os.getenv("DEFAULT_IDE", "windsurf")
-        self.interface_config = CommandProcessor.INTERFACE_CONFIG
+        self.current_interface = os.getenv("DEFAULT_IDE", self.DEFAULT_IDE)
+        
+        # Load interface configuration from JSON file
+        self.interface_config = self._load_interface_config()
         
         # Initialize actions_coordinates with nested structure
         # Format: {"interface_name": {"command_name": (x, y)}}
@@ -137,6 +53,22 @@ class CommandProcessor:
         
         # Cascade monitoring thread
         self.interface_monitor_thread = None
+    
+    def _load_interface_config(self) -> Dict[str, Any]:
+        """Load interface configuration from JSON file.
+        
+        Returns:
+            dict: The interface configuration loaded from the JSON file
+        """
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "interfaces.json")
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading interface configuration: {e}")
+            print("Using default configuration")
+            # Return an empty dict as fallback
+            return {}
     
     def initialize_interface(self, interface_name):
         """Initialize action coordinates for the specified interface
@@ -242,8 +174,8 @@ class CommandProcessor:
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
         elif command_type == "change":
             target_interface = command_params.lower().strip()
-            for interface_name in CommandProcessor.INTERFACE_CONFIG.keys():
-                if target_interface in CommandProcessor.INTERFACE_CONFIG[interface_name].get("transcribed_similar_words", []):
+            for interface_name in self.interface_config.keys():
+                if target_interface in self.interface_config[interface_name].get("transcribed_similar_words", []):
                     target_interface = interface_name
                     
             success = self.initialize_interface(target_interface)

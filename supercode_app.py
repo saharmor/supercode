@@ -328,8 +328,28 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                     cmd_text = ", ".join(commands)
                     self.overlay_manager.update_status(self.overlay_manager.STATUS_EXECUTING, cmd_text)
                     
-                # Execute commands
-                self.command_queue.execute_commands(commands)
+                    # Execute commands and track results
+                    for command in commands:
+                        # Get the command type (first word)
+                        command_type = command.split(" ")[0] if command else ""
+                        
+                        # Check if it's a known command type
+                        if command_type not in ["type", "click", "learn", "change"]:
+                            # Unknown command type - show special message
+                            print(f"Unknown command type: '{command_type}'")
+                            self.overlay_manager.update_status(
+                                self.overlay_manager.STATUS_IDLE, 
+                                f"[Ignored, unknown command] {command}"
+                            )
+                            # Schedule reset of overlay status after 3 seconds
+                            threading.Timer(3.0, lambda: self.overlay_manager.update_status(
+                                self.overlay_manager.STATUS_IDLE)).start()
+                        else:
+                            # Known command type - execute it
+                            try:
+                                self.command_processor.execute_command(command)
+                            except Exception as e:
+                                print(f"Error executing command: {e}")
                 
                 # Reset overlay status if no commands were found
                 if self.overlay_manager and not commands:
