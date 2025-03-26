@@ -13,6 +13,7 @@ from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
 from utils import play_beep
+from computer_use_utils import capture_screenshot
 
 def initialize_gemini_client():
     """
@@ -38,32 +39,6 @@ def initialize_gemini_client():
     except Exception as e:
         print(f"Error initializing Gemini client: {e}")
         return False
-
-
-def capture_screen():
-    """
-    Capture the entire screen.
-    
-    Returns:
-        PIL.Image: The captured screenshot as a PIL Image.
-    """
-    try:
-        # Use screencapture command to capture the screen to a temporary file
-        timestamp = int(time.time())
-        temp_file = f"/tmp/screenshot_{timestamp}.png"
-        
-        subprocess.run(["screencapture", "-x", temp_file], check=True)
-        
-        # Open the image with PIL
-        img = Image.open(temp_file)
-        
-        # Remove the temporary file
-        os.remove(temp_file)
-        
-        return img
-    except Exception as e:
-        print(f"Error capturing screen: {e}")
-        return None
 
 
 def play_sound(sound_file_path):
@@ -208,13 +183,13 @@ def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output
             try:
                 # Take a screenshot
                 screenshot_count += 1
-                image = capture_screen()
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 filename = f"{file_prefix}{timestamp}_screenshot.png"
                 path = os.path.join(output_dir, filename)
                 
-                # Save the screenshot
-                image.save(path)
+                # Use the unified screenshot function with a temporary file for analysis
+                image = capture_screenshot(temp_file=path)
+                
                 print(f"\rChecking coding generation state ({screenshot_count})...", end="")
                 
                 # Analyze the screenshot to determine coding generation state

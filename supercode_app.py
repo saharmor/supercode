@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import the whisper streaming functionality and command processing
-from whisper_streaming import FastSpeechHandler
+from mic_streaming import FastSpeechHandler
 from command_processor import CommandProcessor
 # Import the overlay manager
 from overlay_manager import OverlayManager
@@ -25,7 +25,6 @@ from overlay_manager import OverlayManager
 try:
     from pynput import keyboard
     HAS_PYNPUT = True
-    print("Successfully imported pynput")
 except ImportError:
     # Silently handle missing pynput - it should be installed via requirements.txt
     HAS_PYNPUT = False
@@ -102,8 +101,6 @@ class SuperCodeApp(rumps.App):
         try:
             # Only set up if pynput is available
             if HAS_PYNPUT:
-                print("Setting up global keyboard shortcut: Command + Option + L")
-                
                 # Track pressed keys
                 self.pressed_keys = set()
                 self.hotkey_triggered = False  # Flag to ensure one trigger per key cycle
@@ -128,7 +125,6 @@ class SuperCodeApp(rumps.App):
                         
                         if is_cmd and is_alt and is_l and not self.hotkey_triggered:
                             self.hotkey_triggered = True
-                            print("Detected Command + Option + L combination!")
                             self.on_hotkey_activated()
                             
                     except Exception as e:
@@ -159,12 +155,6 @@ class SuperCodeApp(rumps.App):
                 )
                 self.keyboard_listener.daemon = True
                 self.keyboard_listener.start()
-                
-                # Check if the listener is actually running
-                if self.keyboard_listener.is_alive():
-                    print("Global keyboard shortcut listener is running")
-                else:
-                    print("WARNING: Global keyboard shortcut listener failed to start")
             else:
                 # Log to console but don't show error to user
                 print("pynput not available, global shortcut disabled")
@@ -175,7 +165,6 @@ class SuperCodeApp(rumps.App):
     
     def on_hotkey_activated(self):
         """Handle global hotkey activation"""
-        print("Global shortcut triggered: Command + Option + L")
         # Create a one-shot timer by stopping it in the callback.
         timer = rumps.Timer(self.toggle_listening_from_shortcut, 0.1)
         timer.start()

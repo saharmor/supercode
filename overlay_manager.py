@@ -63,7 +63,6 @@ class OverlayManager:
         Show the overlay by launching overlay.py as a separate process
         """
         if self.overlay_process and self.overlay_process.poll() is None:
-            print("Overlay process already running")
             return
             
         
