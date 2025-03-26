@@ -142,7 +142,7 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
         return False, f"Error: {str(e)}"
 
 
-def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output_dir="screenshots", interface_name=None):
+def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None):
     """
     Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
@@ -188,7 +188,7 @@ def monitor_coding_generation_state(interface_state_prompt, interval=4.0, output
                 path = os.path.join(output_dir, filename)
                 
                 # Use the unified screenshot function with a temporary file for analysis
-                image = capture_screenshot(temp_file=path)
+                image = capture_screenshot(monitor=monitor, temp_file=path)
                 
                 print(f"\rChecking coding generation state ({screenshot_count})...", end="")
                 

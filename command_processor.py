@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Literal, Dict, Any
 
-from computer_use_utils import bring_to_front_window, get_coordinates_for_prompt, get_current_window_name
+from computer_use_utils import bring_to_front_window, get_active_window_monitor, get_coordinates_for_prompt, get_current_window_name
 from utils import play_beep, enhance_user_prompt
 
 load_dotenv()
@@ -84,20 +84,21 @@ class CommandProcessor:
             raise ValueError(f"Interface {interface_name} not found in configuration")
         
         self.current_project_name = get_current_window_name()
+        self.interface_monitor_region = get_active_window_monitor() # TODO Fix, for now this will always return Primary screen
 
         # Initialize the interface if not already in actions_coordinates
         if interface_name not in self.actions_coordinates:
             self.actions_coordinates[interface_name] = {}
 
         # toggle the agent interface TODO check if it's open and avoid opening it again
-        if interface_name == "cursor":
-            pyautogui.hotkey('command', 'i')
-        elif interface_name == "windsurf":
-            pyautogui.hotkey('command', 'l')
+        # if interface_name == "cursor":
+        #     pyautogui.hotkey('command', 'i')
+        # elif interface_name == "windsurf":
+        #     pyautogui.hotkey('command', 'l')
 
         interface_commands = self.interface_config[interface_name]['commands']
         for cmd_name, cmd_data in interface_commands.items():
-            coords = get_coordinates_for_prompt(cmd_data['llm_selector'])
+            coords = get_coordinates_for_prompt(cmd_data['llm_selector'], monitor=self.interface_monitor_region)
             self.actions_coordinates[interface_name][cmd_name] = coords
         
         return True
@@ -106,7 +107,7 @@ class CommandProcessor:
         return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
         
         
-    def start_ide_monitoring(self):
+    def start_ide_monitoring(self, monitor):
         """
         Start a background thread that monitors the IDE state until it's done.
         Uses the monitor_ide_state function from monitor_ide_state.py.
@@ -124,7 +125,7 @@ class CommandProcessor:
             interface_state_prompt = self.interface_config[self.current_interface]['interface_state_prompt']
             self.interface_monitor_thread = threading.Thread(
                 target=monitor_coding_generation_state,
-                args=(interface_state_prompt, 2.0, "screenshots", self.current_interface)
+                args=(interface_state_prompt, monitor, 2.0, "screenshots", self.current_interface)
             )
             self.interface_monitor_thread.daemon = True
             self.interface_monitor_thread.start()
@@ -180,7 +181,7 @@ class CommandProcessor:
                 return False
             
             print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
-            # self.start_ide_monitoring()
+            self.start_ide_monitoring(monitor=self.interface_monitor_region)
             return True
         elif command_type == "click":
             # First, ensure the correct window is focused
@@ -201,7 +202,7 @@ class CommandProcessor:
         elif command_type == "learn": # only buttons for now
             btn_name = command_params.split(" ")[0]
             btn_selector = " ".join(command_params.split(" ")[1:])
-            self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
+            self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector, monitor=self.interface_monitor_region)
         elif command_type == "change":
             # TODO handle cases where changing to the same project name
             change_params = command_params.lower().strip().split()
@@ -222,10 +223,15 @@ class CommandProcessor:
             success = self.initialize_interface(target_interface)
             if success:
                 print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
-                os.system(f"say 'Voice changed to {target_interface}'")
+                if project_name:
+                    os.system(f"say 'Development environment changed to {target_interface} project {project_name}'")
+                else:
+                    os.system(f"say 'Development environment changed to {target_interface}'")
                 self.current_interface = target_interface
-            
-            self.current_interface = target_interface
+            else:
+                print(f"Error: Could not initialize {target_interface} interface")
+                play_beep(1200, 1000)
+                return False
         elif command_type == "stop":
             # Stop command is handled in EnhancedSpeechHandler
             print("Stopping voice recognition")

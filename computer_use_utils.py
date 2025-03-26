@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 from PIL import Image
+from screeninfo import get_monitors
 
 load_dotenv()
 
@@ -18,56 +19,72 @@ class ScalingSource(Enum):
     SCREEN = 2   # Coordinates from screen (need to be scaled to API format)
 
 
-def capture_screenshot(resize_width=None, return_base64=False, temp_file=None):
+def capture_screenshot(monitor=None, resize_width=None, return_base64=False, temp_file=None):
     """
     Unified screenshot capture function for all use cases.
     
     Args:
+        monitor (str, optional): The monitor to capture the screenshot from.
         resize_width (int, optional): Width to resize the image to. Height will be proportionally scaled.
         return_base64 (bool, optional): Whether to return a base64 string instead of a PIL Image.
         temp_file (str, optional): Path to save a temporary file. If None, will use in-memory processing.
-        
     Returns:
         Union[Image.Image, str]: Either a PIL Image object or a base64-encoded string.
     """
     try:
-        # Determine whether we should use macOS screencapture or PyAutoGUI
-        use_screencapture = platform.system() == "Darwin" and temp_file is not None
+        # Always try to use screencapture on macOS if possible
+        use_screencapture = platform.system() == "Darwin"
         
-        # Capture method 1: macOS screencapture (better quality but requires temp file)
         if use_screencapture:
-            subprocess.run(["screencapture", "-x", temp_file], check=True)
+            # Create temp file if not provided
+            if temp_file is None:
+                temp_file = os.path.join(os.getcwd(), f"temp_screenshot_{int(time.time())}.png")
+                should_cleanup = True
+            else:
+                should_cleanup = False
+                
+            # Determine capture region
+            region_args = []
+            if monitor == 'current':
+                m = get_active_window_monitor()
+                region_args = ["-R", f"{m['left']},{m['top']},{m['width']},{m['height']}"]
+            elif isinstance(monitor, dict):
+                region_args = ["-R", f"{monitor['left']},{monitor['top']},{monitor['width']},{monitor['height']}"]
+                
+            # Capture screenshot
+            subprocess.run(["screencapture", "-x"] + region_args + [temp_file], check=True)
             screenshot = Image.open(temp_file)
             
-            # Clean up temp file if we're not returning the image directly
-            if return_base64:
+            # Clean up temp file if we created it
+            if should_cleanup or return_base64:
                 os.remove(temp_file)
-        
-        # Capture method 2: PyAutoGUI (cross-platform)
         else:
-            screenshot = pyautogui.screenshot()
-        
-        # Resize if needed
+            # Fall back to pyautogui on other platforms
+            region = None
+            if monitor == 'current':
+                m = get_active_window_monitor()
+                region = (m['left'], m['top'], m['width'], m['height'])
+            elif isinstance(monitor, dict):
+                region = (monitor['left'], monitor['top'], monitor['width'], monitor['height'])
+            
+            screenshot = pyautogui.screenshot(region=region)
+
+        # Resize
         if resize_width:
-            # Calculate target height while maintaining aspect ratio
             ratio = screenshot.height / screenshot.width
             resize_height = int(resize_width * ratio)
             screenshot = screenshot.resize((resize_width, resize_height))
-        
-        # Return as requested
+
         if return_base64:
-            # Convert to base64
-            img_buffer = io.BytesIO()
-            screenshot.save(img_buffer, format="PNG", optimize=True)
-            img_buffer.seek(0)
-            return base64.b64encode(img_buffer.read()).decode()
+            buffer = io.BytesIO()
+            screenshot.save(buffer, format="PNG", optimize=True)
+            return base64.b64encode(buffer.getvalue()).decode()
         else:
             return screenshot
-            
     except Exception as e:
         print(f"Error capturing screenshot: {e}")
         return None
-
+    
 
 class ClaudeComputerUse:
     """Simple class to interact with Claude Computer Use for getting coordinates"""
@@ -92,14 +109,14 @@ class ClaudeComputerUse:
             # Real screen coordinates -> Claude's coordinate system
             return round(x / x_scaling_factor), round(y / y_scaling_factor)
     
-    def take_screenshot(self) -> str:
+    def take_screenshot(self, monitor=None) -> str:
         """
         Take a screenshot for Claude Computer Use.
         Returns a base64-encoded string of the image resized to target dimensions.
         """
-        return capture_screenshot(resize_width=self.target_width, return_base64=True)
+        return capture_screenshot(monitor=monitor, resize_width=self.target_width, return_base64=True)
     
-    async def get_coordinates_from_claude(self, prompt: str) -> Optional[Tuple[int, int]]:
+    async def get_coordinates_from_claude(self, prompt: str, monitor=None) -> Optional[Tuple[int, int]]:
         """Get coordinates from Claude based on a natural language prompt"""
         try:
             from anthropic import Anthropic
@@ -114,7 +131,7 @@ class ClaudeComputerUse:
             client = Anthropic(api_key=api_key)
             
             # Take a screenshot
-            base64_image = self.take_screenshot()
+            base64_image = self.take_screenshot(monitor=monitor)
             
             # Create the message with the screenshot and prompt
             response = client.messages.create(
@@ -167,7 +184,7 @@ class ClaudeComputerUse:
             return None
 
 
-def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
+def get_coordinates_for_prompt(prompt: str, monitor) -> Optional[Tuple[int, int]]:
     import asyncio
     
     claude = ClaudeComputerUse()
@@ -176,7 +193,7 @@ def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        coordinates = loop.run_until_complete(claude.get_coordinates_from_claude(prompt))
+        coordinates = loop.run_until_complete(claude.get_coordinates_from_claude(prompt, monitor=monitor))
         loop.close()
     except Exception as e:
         print(f"Error running async function: {str(e)}")
@@ -339,4 +356,31 @@ def get_current_window_name():
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
     window_name = result.stdout.strip()
     return window_name
+
+
+def get_active_window_monitor():
+    """
+    Get the monitor where the currently active window is displayed.
+    
+    Returns:
+        dict: The monitor's bounding box with keys 'left', 'top', 'width', 'height'.
+    """
+    try:
+        time.sleep(3)
+        center_x, center_y = pyautogui.position()
+
+        monitors = get_monitors()
+        for m in monitors:
+            if (m.x <= center_x <= m.x + m.width and
+                m.y <= center_y <= m.y + m.height):
+                return {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
+
+        # Fallback: return the first monitor if none match
+        primary = monitors[0]
+        return {"left": primary.x, "top": primary.y, "width": primary.width, "height": primary.height}
+
+    except Exception as e:
+        print(f"Error getting active window monitor: {e}")
+        # Default fallback dimensions
+        return {"left": 0, "top": 0, "width": 1920, "height": 1080}
 
