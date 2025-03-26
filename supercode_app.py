@@ -21,13 +21,15 @@ from command_processor import CommandProcessor
 # Import the overlay manager
 from overlay_manager import OverlayManager
 
-# Add PyObjC for global shortcuts
+# Add pynput for global shortcuts
 try:
-    from AppKit import NSEvent, NSApplication, NSKeyDownMask, NSEventTypeKeyDown, NSCommandKeyMask, NSShiftKeyMask
-    HAS_PYOBJC = True
+    from pynput import keyboard
+    HAS_PYNPUT = True
+    print("Successfully imported pynput")
 except ImportError:
-    # Silently handle missing PyObjC - it should be installed via requirements.txt
-    HAS_PYOBJC = False
+    # Silently handle missing pynput - it should be installed via requirements.txt
+    HAS_PYNPUT = False
+    print("Failed to import pynput")
 
 class SingleInstanceChecker:
     """
@@ -76,6 +78,7 @@ class SuperCodeApp(rumps.App):
         self.is_listening = False
         self.listen_thread = None
         self.handler = None
+        self.keyboard_listener = None
         
         # Use our new overlay manager instead of direct overlay
         self.overlay_manager = OverlayManager()
@@ -95,65 +98,98 @@ class SuperCodeApp(rumps.App):
         self.setup_global_shortcut()
     
     def setup_global_shortcut(self):
-        """Set up global keyboard shortcut (Command + Shift + L)"""
+        """Set up global keyboard shortcut (Command + Option + L)"""
         try:
-            # Only set up if PyObjC is available
-            if HAS_PYOBJC:
-                print("Setting up global keyboard shortcut: Command + Shift + L")
+            # Only set up if pynput is available
+            if HAS_PYNPUT:
+                print("Setting up global keyboard shortcut: Command + Option + L")
                 
-                # Create a monitor for key events
-                mask = NSKeyDownMask
-                NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-                    mask, self.handle_keyboard_event
+                # Track pressed keys
+                self.pressed_keys = set()
+                self.hotkey_triggered = False  # Flag to ensure one trigger per key cycle
+
+                def on_press(key):
+                    try:                        
+                        # Add the key to the set of pressed keys
+                        self.pressed_keys.add(key)
+        
+                        # Check if the Command key is pressed
+                        is_cmd = (keyboard.Key.cmd in self.pressed_keys or
+                                keyboard.Key.cmd_l in self.pressed_keys or
+                                keyboard.Key.cmd_r in self.pressed_keys)
+                        
+                        # Check if the Option/Alt key is pressed
+                        is_alt = (keyboard.Key.alt in self.pressed_keys or
+                                keyboard.Key.alt_l in self.pressed_keys or
+                                keyboard.Key.alt_r in self.pressed_keys)
+                        
+                        # Check if the letter "l" is pressed
+                        is_l = any(getattr(k, 'char', None) and k.char == '¬' for k in self.pressed_keys)
+                        
+                        if is_cmd and is_alt and is_l and not self.hotkey_triggered:
+                            self.hotkey_triggered = True
+                            print("Detected Command + Option + L combination!")
+                            self.on_hotkey_activated()
+                            
+                    except Exception as e:
+                        print(f"Error on key press: {e}")
+                
+                def on_release(key):
+                    try:
+                        if key in self.pressed_keys:
+                            self.pressed_keys.remove(key)
+                        
+                        # If any part of the combination is released, reset the flag
+                        if key in (keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r,
+                                keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r) or (
+                            hasattr(key, 'char') and key.char and key.char.lower() == 'l'):
+                            self.hotkey_triggered = False
+
+                        if key == keyboard.Key.esc:
+                            print("ESC pressed, stopping listener for debugging")
+                            return False
+                    except Exception as e:
+                        print(f"Error on key release: {e}")
+                
+                # Start the listener in a non-blocking way
+                self.keyboard_listener = keyboard.Listener(
+                    on_press=on_press,
+                    on_release=on_release,
+                    suppress=False  # Don't suppress events to avoid conflicts
                 )
-                print("Global keyboard shortcut monitor registered")
+                self.keyboard_listener.daemon = True
+                self.keyboard_listener.start()
+                
+                # Check if the listener is actually running
+                if self.keyboard_listener.is_alive():
+                    print("Global keyboard shortcut listener is running")
+                else:
+                    print("WARNING: Global keyboard shortcut listener failed to start")
             else:
                 # Log to console but don't show error to user
-                print("PyObjC not available, global shortcut disabled")
+                print("pynput not available, global shortcut disabled")
         except Exception as e:
             print(f"Error setting up global shortcut: {e}")
             import traceback
             traceback.print_exc()
     
-    def handle_keyboard_event(self, event):
-        """Handle global keyboard events"""
-        try:
-            # Check if event is our shortcut (Command + Shift + L)
-            if (event.type() == NSEventTypeKeyDown and
-                event.modifierFlags() & NSCommandKeyMask and
-                event.modifierFlags() & NSShiftKeyMask and
-                event.characters() and
-                event.characters().lower() == 'l'):
-                
-                print("Global shortcut triggered: Command + Shift + L")
-                
-                # Use rumps.Timer to run toggle_listening on the main thread
-                # since we can't directly call it from the event handler
-                rumps.Timer(self.toggle_listening_from_shortcut, 0.1).start()
-                
-                return True
-        except Exception as e:
-            print(f"Error handling keyboard event: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        return False
+    def on_hotkey_activated(self):
+        """Handle global hotkey activation"""
+        print("Global shortcut triggered: Command + Option + L")
+        # Create a one-shot timer by stopping it in the callback.
+        timer = rumps.Timer(self.toggle_listening_from_shortcut, 0.1)
+        timer.start()
+
     
-    def toggle_listening_from_shortcut(self, _):
+    def toggle_listening_from_shortcut(self, timer):
         """Toggle listening from a global shortcut (ensures running on main thread)"""
+        timer.stop()
         print("Toggling listening from global shortcut")
         
-        # Find the menu item and update its state
-        for item in self.menu:
-            if hasattr(item, 'title') and (item.title == "Start Listening" or item.title == "Stop Listening"):
-                if self.is_listening:
-                    item.title = "Start Listening"
-                    self.stop_listening()
-                else:
-                    item.title = "Stop Listening"
-                    self.start_listening()
-                break
-    
+        # Find the "Start Listening" menu item to pass as sender
+        toggled_item = self.menu['Start Listening'] if 'Start Listening' in self.menu else self.menu['Stop Listening']
+        self.toggle_listening(toggled_item)
+        
     def toggle_listening(self, sender):
         """Toggle the listening state with visual feedback"""
         if self.is_listening:
@@ -359,6 +395,9 @@ Example: Say "activate type hello world"
         # Stop listening if active
         if self.is_listening:
             self.stop_listening()
+        # Stop keyboard listener if active
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
 
 
 class EnhancedCommandProcessor(CommandProcessor):

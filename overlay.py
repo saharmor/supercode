@@ -243,7 +243,7 @@ class StatusOverlay(QWidget):
             # Draw button text
             painter.setPen(self.COLOR_BUTTON_TEXT)
             painter.setFont(QFont("SF Pro Display", 14, QFont.DemiBold))
-            painter.drawText(button_rect, Qt.AlignCenter, "Start Listening")
+            painter.drawText(button_rect, Qt.AlignCenter, "Resume Listening")
         
         # Draw close button
         painter.setPen(self.COLOR_CLOSE)
