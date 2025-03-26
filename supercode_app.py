@@ -140,10 +140,6 @@ class SuperCodeApp(rumps.App):
                                 keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r) or (
                             hasattr(key, 'char') and key.char and key.char.lower() == 'l'):
                             self.hotkey_triggered = False
-
-                        if key == keyboard.Key.esc:
-                            print("ESC pressed, stopping listener for debugging")
-                            return False
                     except Exception as e:
                         print(f"Error on key release: {e}")
                 

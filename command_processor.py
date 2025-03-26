@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Literal, Dict, Any
 
-from computer_use_utils import get_coordinates_for_prompt
+from computer_use_utils import bring_to_front_window, get_coordinates_for_prompt, get_current_window_name
 from utils import play_beep, enhance_user_prompt
 
 load_dotenv()
@@ -34,7 +34,7 @@ class CommandProcessor:
     
     def __init__(self):
         self.current_interface = os.getenv("DEFAULT_IDE", self.DEFAULT_IDE)
-        
+
         # Load interface configuration from JSON file
         self.interface_config = self._load_interface_config()
         
@@ -83,6 +83,8 @@ class CommandProcessor:
             print(f"Interface {interface_name} not found in configuration")
             raise ValueError(f"Interface {interface_name} not found in configuration")
         
+        self.current_project_name = get_current_window_name()
+
         # Initialize the interface if not already in actions_coordinates
         if interface_name not in self.actions_coordinates:
             self.actions_coordinates[interface_name] = {}
@@ -94,6 +96,9 @@ class CommandProcessor:
         
         return True
 
+    def focus_ide_window(self, project_name: str):
+        return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
+        
         
     def start_ide_monitoring(self):
         """
@@ -142,6 +147,12 @@ class CommandProcessor:
         command_params = " ".join(command_text.split(" ")[1:])
         
         if command_type == "type":
+            # First, ensure the correct window is focused
+            focus_success = self.focus_ide_window(self.current_project_name)
+            if not focus_success:
+                print(f"Warning: Could not focus the {self.current_interface} window")
+                # Continue anyway, but it might not type in the right place
+            
             # enhanced_prompt = enhance_user_prompt(command_params)
             # if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
             #     print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
@@ -163,11 +174,24 @@ class CommandProcessor:
                 return False
             
             print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
-            self.start_ide_monitoring()
+            # self.start_ide_monitoring()
+            return True
         elif command_type == "click":
+            # First, ensure the correct window is focused
+            focus_success = self.focus_ide_window()
+            if not focus_success:
+                print(f"Warning: Could not focus the {self.current_interface} window")
+                # Continue anyway, but it might not click in the right place
+            
             command_params = command_params.split(" ")[0]
+            if command_params not in self.buttons:
+                print(f"Error: No button named '{command_params}' has been learned")
+                play_beep(1200, 1000)
+                return False
+                
             pyautogui.moveTo(self.buttons[command_params][0], self.buttons[command_params][1])
             pyautogui.click(button="left")
+            return True
         elif command_type == "learn": # only buttons for now
             btn_name = command_params.split(" ")[0]
             btn_selector = " ".join(command_params.split(" ")[1:])

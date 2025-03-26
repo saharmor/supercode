@@ -208,6 +208,15 @@ def get_windsurf_project_window_name(project_contained_name: str):
     window_names = result.stdout.strip().split(",")
     return next((name.strip() for name in window_names if project_contained_name in name), None)
 
+
+def get_ide_window_name(app_name: str, window_title: str):
+    if app_name == "windsurf":
+        return window_title.split(" — ")[0] if " — " in window_title else window_title
+    elif app_name == "cursor":
+        return window_title.split(" — ")[1] if " — " in window_title else window_title
+    else:
+        return window_title
+
 def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_title: str):
     """
     Focus the appropriate IDE window based on the current interface.
@@ -216,6 +225,9 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
         bool: True if the window was successfully focused, False otherwise
     """
     try:
+        app_name = app_name.lower()
+        window_name = get_ide_window_name(app_name, window_title)
+        
         # Generic fallback for unknown interfaces - try to use the interface name as the app name
         if app_name not in possible_apps_names:
             print(f"No explicit application mapping defined for interface: {app_name}")
@@ -224,7 +236,7 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
         if platform.system() == "Darwin":
             # If the application is Google Chrome, or if it's Lovable or Bolt,
             # then use Chrome to find the tab with the window_title.
-            if app_name in ["Lovable", "Bolt"]:
+            if app_name in ["lovable", "bolt"]:
                 script = f'''
                 tell application "Google Chrome"
                     activate
@@ -232,7 +244,7 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
                     repeat with w in windows
                         set tabCount to count of tabs in w
                         repeat with i from 1 to tabCount
-                            if (title of (tab i of w) contains "{window_title}") then
+                            if (title of (tab i of w) contains "{window_name}") then
                                 set active tab index of w to i
                                 -- Bring the window to the front
                                 set index of w to 1
@@ -248,52 +260,20 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
                 result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
                 tab_found = result.stdout.strip() == "true"
                 if tab_found:
-                    print(f"Focused Google Chrome tab with title containing '{window_title}' for interface '{app_name}'")
                     return True
                 else:
-                    print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_title}'")
+                    print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_name}'")
                     return False
-            elif app_name in ["Windsurf", "Cursor"]:
-                if app_name == "Windsurf":
-                    # For Windsurf, find window by title
-                    window_name = get_windsurf_project_window_name(window_title)
-                    if not window_name:
-                        print(f"Warning: Could not find Windsurf window containing '{window_title}'")
-                        return False
-                elif app_name == "Cursor":
-                    window_name = window_title
-
-                script = f'''
-                    tell application "{app_name}"
-                        activate
-                        end tell
-                        
-                        tell application "System Events"
-                            tell process "{app_name}"
-                                set frontmost to true
-                                repeat with w in windows
-                                    if name of w contains "{window_name}" then
-                                        perform action "AXRaise" of w
-                                        exit repeat
-                                    end if
-                                end repeat
-                            end tell
-                        end tell
-                    '''
-                subprocess.run(["osascript", "-e", script], check=True)
-                print(f"Focused {app_name} window containing '{window_title}'")
-                return True
             else:
+                # windsurf runs as an Electron app, so we need to check the window names
+                app_name_for_script = "Electron" if app_name == "windsurf" else app_name.capitalize()
+                
                 script = f'''
-                tell application "{app_name}"
-                    activate
-                end tell
-
                 tell application "System Events"
-                    tell process "{app_name}"
+                    tell process "{app_name_for_script}"
                         set frontmost to true
                         repeat with w in windows
-                            if name of w contains "{window_title}" then
+                            if name of w contains "{window_name}" then
                                 perform action "AXRaise" of w
                                 exit repeat
                             end if
@@ -301,8 +281,8 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
                     end tell
                 end tell
                 '''
+
                 subprocess.run(["osascript", "-e", script], check=True)
-                print(f"Focused {app_name} window")
                 return True
 
         elif platform.system() == "Windows":
@@ -318,14 +298,39 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
 
 
 def test_bring_to_front_window():
-    bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'ai-syndicate')
-    time.sleep(2)
+    # bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'ai-syndicate')
+    # time.sleep(2)
     
-    bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'blabla')
-    time.sleep(2)
+    # bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'blabla')
+    # time.sleep(2)
 
-    bring_to_front_window(['Cursor', 'Windsurf', 'Lovable', 'Bolt'], 'Windsurf', 'gemini')
+    bring_to_front_window(['cursor', 'windsurf', 'lovable', 'bolt'], 'Windsurf', 'gemini-multimodal-playground — ai studio api key.png')
     time.sleep(2)
+    bring_to_front_window(['cursor', 'windsurf', 'lovable', 'bolt'], 'Windsurf', 'bug_surf')
+    time.sleep(2)
+    bring_to_front_window(['cursor', 'windsurf', 'lovable', 'bolt'], 'Windsurf', 'gemini-multimodal-playground — ai studio api key.png')
     
-    bring_to_front_window(['Cursor', 'Windsurf', 'Lovable', 'Bolt'], 'Cursor', 'bug')
-    time.sleep(2)
+    # bring_to_front_window(['cursor', 'windsurf', 'lovable', 'bolt'], 'Cursor', 'bug_hunter.py — simulatedev')
+    # time.sleep(2)
+
+    # bring_to_front_window(['cursor', 'windsurf', 'lovable', 'bolt'], 'Windsurf', 'bug_surf')
+    # time.sleep(2)
+    
+
+def get_current_window_name():
+    script = '''
+    tell application "System Events"
+        -- 1) Find the process whose frontmost is true (the active app).
+        set frontProcess to first process whose frontmost is true
+        
+        -- 2) Get the front window of that process.
+        set frontWindow to front window of frontProcess
+        
+        -- 3) Return (print) the name (title) of that front window.
+        return name of frontWindow
+    end tell
+    '''
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+    window_name = result.stdout.strip()
+    return window_name
+
