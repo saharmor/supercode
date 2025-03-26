@@ -21,11 +21,11 @@ class OverlayManager:
     
     # Status constants
     STATUS_IDLE = "Waiting for 'activate'"
-    STATUS_RECORDING = "Listening..."
-    STATUS_TRANSCRIBING = "Transcribing..."
+    STATUS_RECORDING = "Listening"
+    STATUS_TRANSCRIBING = "Transcribing"
     STATUS_EXECUTING = "Executing command"
     STATUS_STOPPED = "Voice Recognition Stopped"
-    STATUS_INITIALIZING = "Initializing..."
+    STATUS_INITIALIZING = "Initializing"
     
     def __init__(self):
         """Initialize the overlay manager"""
@@ -33,12 +33,17 @@ class OverlayManager:
         self.is_visible = False
         self.current_status = self.STATUS_IDLE
         self.additional_info = ""
+        self.interface_name = "SuperCode"  # Default interface name
         self.close_handler = None  # Function to call when close message is received
         self.start_handler = None  # Function to call when start message is received
         
         # Create a temporary file for communication
         self.status_file = tempfile.NamedTemporaryFile(delete=False, mode='w+')
-        self.status_file.write(json.dumps({"status": self.STATUS_IDLE, "info": ""}))
+        self.status_file.write(json.dumps({
+            "status": self.STATUS_IDLE, 
+            "info": "",
+            "interface": self.interface_name
+        }))
         self.status_file.flush()
         
         # Create a temporary file for receiving messages from the overlay
@@ -57,6 +62,12 @@ class OverlayManager:
     def set_start_handler(self, handler_func):
         """Set the function to call when start listening button is clicked"""
         self.start_handler = handler_func
+    
+    def set_interface_name(self, interface_name):
+        """Set the current interface name to be displayed in the overlay"""
+        self.interface_name = interface_name
+        # Update the status to reflect the new interface name
+        self.update_status(self.current_status, self.additional_info)
     
     def show_overlay(self):
         """
@@ -132,7 +143,8 @@ class OverlayManager:
             with open(self.status_file.name, 'w') as f:
                 f.write(json.dumps({
                     "status": status,
-                    "info": additional_info
+                    "info": additional_info,
+                    "interface": self.interface_name
                 }))
         except Exception as e:
             print(f"Error updating status file: {e}")

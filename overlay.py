@@ -31,6 +31,7 @@ class StatusOverlay(QWidget):
     COLOR_IDLE = QColor(33, 150, 243)  # Blue for idle state
     COLOR_BUTTON = QColor(33, 150, 243)  # Blue for buttons
     COLOR_BUTTON_TEXT = QColor(255, 255, 255)  # White text for buttons
+    COLOR_INTERFACE = QColor(50, 50, 50)  # Dark gray for interface name
     
     def __init__(self, size=200, status_file=None, message_file=None):
         """
@@ -50,6 +51,7 @@ class StatusOverlay(QWidget):
         # State variables
         self.current_status = OverlayManager.STATUS_INITIALIZING
         self.additional_info = ""
+        self.interface_name = "SuperCode"  # Default interface name
         self.is_recording = False
         self.animation_frame = 0
         self.dragging = False
@@ -114,14 +116,16 @@ class StatusOverlay(QWidget):
                     data = json.loads(f.read())
                     status = data.get("status", OverlayManager.STATUS_INITIALIZING)
                     info = data.get("info", "")
+                    interface = data.get("interface", "SuperCode")
                     
                     # Update overlay status
                     self.current_status = status
                     self.additional_info = info
+                    self.interface_name = interface
                     self.is_recording = status == OverlayManager.STATUS_RECORDING
                     self.update()
                     
-                    print(f"Status updated: {status} - {info}")
+                    print(f"Status updated: {status} - {info} - Interface: {interface}")
                 
                 # Update last modified time
                 self.last_status_modified = current_modified
@@ -144,7 +148,7 @@ class StatusOverlay(QWidget):
         # Calculate sizes for responsive layout
         padding = 15
         width = self.width() - 2 * padding
-        height = 120  # Fixed height for the overlay
+        height = 140  # Increased height to accommodate interface name
         
         # Draw rounded rectangle background with shadow
         path = QPainterPath()
@@ -153,6 +157,20 @@ class StatusOverlay(QWidget):
         
         # Fill background
         painter.fillPath(path, self.COLOR_BG)
+        
+        # Draw interface name at the top
+        painter.setPen(self.COLOR_INTERFACE)
+        interface_font = QFont("SF Pro Display", 12)
+        interface_font.setWeight(QFont.DemiBold)
+        painter.setFont(interface_font)
+        
+        # Draw interface name centered at the top with a slight border
+        interface_rect = QRectF(padding + 5, padding + 5, width - 10, 25)
+        painter.drawText(interface_rect, Qt.AlignCenter, self.interface_name)
+        
+        # Draw a light separator line
+        painter.setPen(QColor(200, 200, 200))
+        painter.drawLine(padding + 20, padding + 30, padding + width - 20, padding + 30)
         
         # Draw status indicator dot with smoother animation
         # Calculate pulsing effect based on animation frame - smoother sine wave
@@ -174,9 +192,9 @@ class StatusOverlay(QWidget):
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(glow_color)
                 
-                # Center the glow properly
+                # Center the glow properly - moved down to accommodate interface name
                 glow_x = padding + 20 + (14 - glow_size) / 2
-                glow_y = padding + 30 + (14 - glow_size) / 2
+                glow_y = padding + 45 + (14 - glow_size) / 2
                 painter.drawEllipse(int(glow_x), int(glow_y), int(glow_size), int(glow_size))
             
             # Draw the main dot
@@ -184,9 +202,9 @@ class StatusOverlay(QWidget):
             painter.setPen(Qt.NoPen)
             painter.setBrush(dot_color)
             
-            # Center the dot properly with the pulsing effect
+            # Center the dot properly with the pulsing effect - moved down
             dot_x = padding + 20 + (14 - status_dot_size) / 2
-            dot_y = padding + 30 + (14 - status_dot_size) / 2
+            dot_y = padding + 45 + (14 - status_dot_size) / 2
             painter.drawEllipse(int(dot_x), int(dot_y), int(status_dot_size), int(status_dot_size))
         
         # Draw status text
@@ -203,8 +221,8 @@ class StatusOverlay(QWidget):
         status_font.setWeight(QFont.DemiBold)
         painter.setFont(status_font)
         
-        # Center the status text
-        painter.drawText(QRectF(padding, padding + 20, width, 35), Qt.AlignCenter, self.current_status)
+        # Center the status text - moved down to accommodate interface name
+        painter.drawText(QRectF(padding, padding + 35, width, 35), Qt.AlignCenter, self.current_status)
         
         # Draw additional info (command)
         if self.additional_info:
@@ -219,8 +237,8 @@ class StatusOverlay(QWidget):
             else:
                 truncated_text = self.additional_info
                 
-            # Center the command text
-            text_rect = QRectF(padding, padding + 55, width, 50)
+            # Center the command text - moved down
+            text_rect = QRectF(padding, padding + 70, width, 50)
             painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, truncated_text)
         
         # Draw Start Listening button when voice recognition is stopped
@@ -268,7 +286,7 @@ class StatusOverlay(QWidget):
             # Calculate button rect
             button_width = 160
             button_height = 40
-            height = 120
+            height = 140
             button_x = padding + (width - button_width) / 2
             button_y = padding + height - button_height - 15  # 15px from bottom
             

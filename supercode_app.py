@@ -78,9 +78,12 @@ class SuperCodeApp(rumps.App):
         self.listen_thread = None
         self.handler = None
         self.keyboard_listener = None
+        self.current_interface = "SuperCode"  # Track the current interface
         
         # Use our new overlay manager instead of direct overlay
         self.overlay_manager = OverlayManager()
+        # Set the interface name in the overlay
+        self.overlay_manager.set_interface_name(self.current_interface)
         # Set the close handler
         self.overlay_manager.set_close_handler(self.stop_from_overlay)
         # Set the start handler
@@ -258,7 +261,7 @@ class SuperCodeApp(rumps.App):
         """Run the whisper streaming handler in a separate thread"""
         try:
             # Create a custom command processor with overlay access
-            command_processor = EnhancedCommandProcessor(self.overlay_manager)
+            command_processor = EnhancedCommandProcessor(self.overlay_manager, self)
             
             # Create an enhanced speech handler that updates the overlay
             self.handler = EnhancedSpeechHandler(
@@ -384,14 +387,20 @@ Example: Say "activate type hello world"
         if self.keyboard_listener:
             self.keyboard_listener.stop()
 
+    def set_current_interface(self, interface_name):
+        """Set the current interface name and update the overlay"""
+        self.current_interface = interface_name
+        self.overlay_manager.set_interface_name(interface_name)
+
 
 class EnhancedCommandProcessor(CommandProcessor):
     """
     A custom command processor that shows notifications and updates the overlay status.
     """
-    def __init__(self, overlay_manager=None):
+    def __init__(self, overlay_manager=None, app=None):
         super().__init__()
         self.overlay_manager = overlay_manager
+        self.app = app  # Reference to the main app for interface name updates
         
     def process_command(self, command_text):
         """Process a command and update the overlay"""
@@ -403,6 +412,25 @@ class EnhancedCommandProcessor(CommandProcessor):
         
         # Execute the command using the parent class method
         result = super().process_command(command_text)
+        
+        # After command execution, check if the window has changed 
+        if self.app:
+            try:
+                # Import from computer_use_utils for window detection
+                from computer_use_utils import get_current_window_name
+                
+                # Wait a moment for any UI changes from the command
+                time.sleep(0.5)
+                
+                # Get the current window name
+                window_name = get_current_window_name()
+                
+                # If window name is set and different from the current interface
+                if window_name and window_name != self.app.current_interface:
+                    # Update the interface name in the app
+                    self.app.set_current_interface(window_name)
+            except Exception as e:
+                print(f"Error checking window after command: {e}")
         
         # Show a notification
         if result:
@@ -624,12 +652,36 @@ def main():
         timer.timeout.connect(QCoreApplication.processEvents)
         timer.start(50)  # Process Qt events every 50ms
         
+        # Create a timer to check the active window and update the interface name
+        active_window_timer = QTimer()
+        
+        def check_active_window():
+            try:
+                # Import from computer_use_utils for window detection
+                from computer_use_utils import get_current_window_name
+                
+                # Get the current window name
+                window_name = get_current_window_name()
+                
+                # If window name is set and different from the current interface
+                if window_name and window_name != app.current_interface:
+                    # Update the interface name in the app
+                    app.set_current_interface(window_name)
+            except Exception as e:
+                print(f"Error checking active window: {e}")
+        
+        # Connect the timer to the function
+        active_window_timer.timeout.connect(check_active_window)
+        active_window_timer.start(2000)  # Check every 2 seconds
+        
         try:
             # Run the rumps app (this will block)
             app.run()
         finally:
             # Clean up the instance checker socket when the app exits
             instance_checker.cleanup()
+            # Stop the active window timer
+            active_window_timer.stop()
         
     except Exception as e:
         print(f"Error initializing SuperCode: {str(e)}")

@@ -160,21 +160,23 @@ class CommandProcessor:
                 print(f"Warning: Could not focus the {self.current_interface} window")
                 # Continue anyway, but it might not type in the right place
             
-            # enhanced_prompt = enhance_user_prompt(command_params)
-            # if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
-            #     print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
-            #     # play sound to notify user
-            #     play_beep(1200, 1000)
-            #     return False
+            prompt = command_params
+            if os.getenv("ENHANCE_PROMPT") == "true":
+                enhanced_prompt = enhance_user_prompt(command_params)
+                if not enhanced_prompt.prompt or enhanced_prompt.prompt == 'None':
+                    print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
+                    # play sound to notify user
+                    play_beep(1200, 1000)
+                    return False
+                
+                prompt = enhanced_prompt.prompt
             
             if self.current_interface in self.actions_coordinates and command_type in self.actions_coordinates[self.current_interface]:
                 coords = self.actions_coordinates[self.current_interface][command_type]
                 pyautogui.moveTo(coords[0], coords[1])
                 pyautogui.click(button="left")
-                # pyautogui.write(enhanced_prompt.prompt)
-                #TODO REVERT!
-                pyautogui.write(command_params)
-                # pyautogui.press("enter")
+                pyautogui.write(prompt)
+                pyautogui.press("enter")
             else:
                 print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
