@@ -2,9 +2,12 @@ import os
 import base64
 import io
 import pyautogui
+import platform
+import subprocess
 from enum import Enum
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple
 from dotenv import load_dotenv
+from PIL import Image
 
 load_dotenv()
 
@@ -12,6 +15,57 @@ load_dotenv()
 class ScalingSource(Enum):
     API = 1      # Coordinates from API (need to be scaled to real screen)
     SCREEN = 2   # Coordinates from screen (need to be scaled to API format)
+
+
+def capture_screenshot(resize_width=None, return_base64=False, temp_file=None):
+    """
+    Unified screenshot capture function for all use cases.
+    
+    Args:
+        resize_width (int, optional): Width to resize the image to. Height will be proportionally scaled.
+        return_base64 (bool, optional): Whether to return a base64 string instead of a PIL Image.
+        temp_file (str, optional): Path to save a temporary file. If None, will use in-memory processing.
+        
+    Returns:
+        Union[Image.Image, str]: Either a PIL Image object or a base64-encoded string.
+    """
+    try:
+        # Determine whether we should use macOS screencapture or PyAutoGUI
+        use_screencapture = platform.system() == "Darwin" and temp_file is not None
+        
+        # Capture method 1: macOS screencapture (better quality but requires temp file)
+        if use_screencapture:
+            subprocess.run(["screencapture", "-x", temp_file], check=True)
+            screenshot = Image.open(temp_file)
+            
+            # Clean up temp file if we're not returning the image directly
+            if return_base64:
+                os.remove(temp_file)
+        
+        # Capture method 2: PyAutoGUI (cross-platform)
+        else:
+            screenshot = pyautogui.screenshot()
+        
+        # Resize if needed
+        if resize_width:
+            # Calculate target height while maintaining aspect ratio
+            ratio = screenshot.height / screenshot.width
+            resize_height = int(resize_width * ratio)
+            screenshot = screenshot.resize((resize_width, resize_height))
+        
+        # Return as requested
+        if return_base64:
+            # Convert to base64
+            img_buffer = io.BytesIO()
+            screenshot.save(img_buffer, format="PNG", optimize=True)
+            img_buffer.seek(0)
+            return base64.b64encode(img_buffer.read()).decode()
+        else:
+            return screenshot
+            
+    except Exception as e:
+        print(f"Error capturing screenshot: {e}")
+        return None
 
 
 class ClaudeComputerUse:
@@ -38,19 +92,11 @@ class ClaudeComputerUse:
             return round(x / x_scaling_factor), round(y / y_scaling_factor)
     
     def take_screenshot(self) -> str:
-        # Capture screenshot using PyAutoGUI - no region parameter to capture entire screen
-        screenshot = pyautogui.screenshot()
-        
-        # Resize to target dimensions
-        screenshot = screenshot.resize((self.target_width, self.target_height))
-        
-        # Save to in-memory buffer
-        img_buffer = io.BytesIO()
-        screenshot.save(img_buffer, format="PNG", optimize=True)
-        img_buffer.seek(0)
-        
-        # Return base64 encoded image
-        return base64.b64encode(img_buffer.read()).decode()
+        """
+        Take a screenshot for Claude Computer Use.
+        Returns a base64-encoded string of the image resized to target dimensions.
+        """
+        return capture_screenshot(resize_width=self.target_width, return_base64=True)
     
     async def get_coordinates_from_claude(self, prompt: str) -> Optional[Tuple[int, int]]:
         """Get coordinates from Claude based on a natural language prompt"""
