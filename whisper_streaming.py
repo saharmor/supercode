@@ -127,68 +127,114 @@ class FastSpeechHandler:
         Continuously capture audio in small chunks and process in real-time.
         This is the key to low latency.
         """
-        print(f"Listening for activation word: '{self.activation_word}'\n")
-        
-        # Open audio stream
-        stream = self.audio.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk_size
-        )
-        
-        # State tracking
-        is_recording = False
+        self._before_audio_capture()
         
         try:
-            while not self.should_stop:
-                # Get audio chunk - this is non-blocking and very fast
-                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
-                
-                # Check if chunk contains speech
-                contains_speech = self._is_speech(chunk)
-                
-                # State machine logic
-                if contains_speech:
-                    # Reset silence counter
-                    self.silent_chunks = 0
+            # Open audio stream
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk_size
+            )
+            
+            # Let subclasses do initialization 
+            self._after_stream_open()
+            
+            # State tracking
+            is_recording = False
+            
+            try:
+                while not self.should_stop:
+                    # Get audio chunk - this is non-blocking and very fast
+                    chunk = stream.read(self.chunk_size, exception_on_overflow=False)
                     
-                    # Start recording if not already
-                    if not is_recording:
-                        is_recording = True
-                        self.audio_buffer = []  # Clear buffer
-                        print("Speech detected, recording...")
+                    # Check if chunk contains speech
+                    contains_speech = self._is_speech(chunk)
                     
-                    # Add chunk to buffer
-                    self.audio_buffer.append(chunk)
-                else:
-                    # No speech detected
-                    if is_recording:
-                        # Still in recording mode, count silence
-                        self.silent_chunks += 1
-                        self.audio_buffer.append(chunk)  # Keep recording silence too
+                    # State machine logic
+                    if contains_speech:
+                        # Reset silence counter
+                        self.silent_chunks = 0
                         
-                        # Check if we've reached silence threshold
-                        if self.silent_chunks >= self.silent_chunks_threshold:
-                            # End of speech detected
-                            is_recording = False
-                            print("Silence threshold reached, processing audio...")
+                        # Start recording if not already
+                        if not is_recording:
+                            is_recording = True
+                            self.audio_buffer = []  # Clear buffer
+                            print("Speech detected, recording...")
+                            self._on_recording_start()
+                        
+                        # Add chunk to buffer
+                        self.audio_buffer.append(chunk)
+                    else:
+                        # No speech detected
+                        if is_recording:
+                            # Still in recording mode, count silence
+                            self.silent_chunks += 1
+                            self.audio_buffer.append(chunk)  # Keep recording silence too
+                            
+                            # Check if we've reached silence threshold
+                            if self.silent_chunks >= self.silent_chunks_threshold:
+                                # End of speech detected
+                                is_recording = False
+                                print("Silence threshold reached, processing audio...")
+                                self._on_recording_end()
         
-                            # Save audio to temp file for transcription
-                            self._save_and_transcribe()
+                                # Save audio to temp file for transcription
+                                self._save_and_transcribe()
                     
-                # Small sleep to prevent high CPU usage
-                time.sleep(0.001)
+                    # Small sleep to prevent high CPU usage
+                    time.sleep(0.001)
+            
+            except Exception as e:
+                print(f"Error in audio capture loop: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                self._on_capture_error(e)
+            finally:
+                # Clean up
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except:
+                    pass  # Stream might already be closed
+                self._after_stream_close()
         
         except Exception as e:
-            print(f"Error in audio capture: {str(e)}")
+            print(f"Error initializing audio capture: {str(e)}")
             import traceback
             print(traceback.format_exc())
-        finally:
-            # Clean up
-            stream.stop_stream()
-            stream.close()
+            self._on_initialization_error(e)
+    
+    # Hook methods for subclasses to override
+    def _before_audio_capture(self):
+        """Hook called before audio capture starts"""
+        print(f"Listening for activation word: '{self.activation_word}'\n")
+        
+    def _after_stream_open(self):
+        """Hook called after audio stream is opened"""
+        pass
+        
+    def _on_recording_start(self):
+        """Hook called when recording starts"""
+        pass
+        
+    def _on_recording_end(self):
+        """Hook called when recording ends"""
+        pass
+        
+    def _on_capture_error(self, error):
+        """Hook called when an error occurs in the capture loop"""
+        pass
+        
+    def _after_stream_close(self):
+        """Hook called after the audio stream is closed"""
+        pass
+        
+    def _on_initialization_error(self, error):
+        """Hook called when an error occurs during initialization"""
+        pass
     
     def _save_and_transcribe(self):
         """
