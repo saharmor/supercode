@@ -9,3 +9,4 @@ anthropic>=0.37.1
 pillow
 PyAutoGUI
 google-genai>=1.7.0
+pyobjc>=9.0.1

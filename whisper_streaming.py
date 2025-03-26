@@ -82,30 +82,6 @@ class FastSpeechHandler:
         self.energy_threshold = 1000  # Higher threshold to reduce sensitivity to random noise
         self.silent_chunks_threshold = int(self.silence_duration * self.rate / self.chunk_size)
         self.silent_chunks = 0
-        
-        # Callback hooks for status updates
-        self._on_initializing = lambda msg="": None
-        self._on_idle = lambda: None
-        self._on_recording = lambda: None
-        self._on_transcribing = lambda: None
-        self._on_error = lambda err="": None
-    
-    def set_status_callbacks(self, initializing=None, idle=None, recording=None, transcribing=None, error=None):
-        """
-        Set callbacks to be called when status changes.
-        
-        Args:
-            initializing: Called when initializing (with a message parameter)
-            idle: Called when ready/idle
-            recording: Called when recording speech
-            transcribing: Called when transcribing audio
-            error: Called when an error occurs (with an error message parameter)
-        """
-        if initializing: self._on_initializing = initializing
-        if idle: self._on_idle = idle
-        if recording: self._on_recording = recording
-        if transcribing: self._on_transcribing = transcribing
-        if error: self._on_error = error
     
     def start(self):
         """
@@ -151,97 +127,68 @@ class FastSpeechHandler:
         Continuously capture audio in small chunks and process in real-time.
         This is the key to low latency.
         """
-        print(f"Initializing audio capture...")
-        self._on_initializing("Preparing microphone...")
+        print(f"Listening for activation word: '{self.activation_word}'\n")
+        
+        # Open audio stream
+        stream = self.audio.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk_size
+        )
+        
+        # State tracking
+        is_recording = False
         
         try:
-            # Open audio stream
-            stream = self.audio.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk_size
-            )
-            
-            # Calibration period - let the mic warm up
-            print("Calibrating microphone... Please wait.")
-            
-            # Minimum initialization time to ensure users see the initializing status
-            # This also gives time for the microphone to stabilize
-            time.sleep(2.0)
-            
-            # Now we're ready to listen
-            print(f"Ready! Listening for activation word: '{self.activation_word}'\n")
-            self._on_idle()
-            
-            # State tracking
-            is_recording = False
-            
-            try:
-                while not self.should_stop:
-                    # Get audio chunk - this is non-blocking and very fast
-                    chunk = stream.read(self.chunk_size, exception_on_overflow=False)
-                    
-                    # Check if chunk contains speech
-                    contains_speech = self._is_speech(chunk)
-                    
-                    # State machine logic
-                    if contains_speech:
-                        # Reset silence counter
-                        self.silent_chunks = 0
-                        
-                        # Start recording if not already
-                        if not is_recording:
-                            is_recording = True
-                            self.audio_buffer = []  # Clear buffer
-                            print("Speech detected, recording...")
-                            self._on_recording()
-                        
-                        # Add chunk to buffer
-                        self.audio_buffer.append(chunk)
-                    else:
-                        # No speech detected
-                        if is_recording:
-                            # Still in recording mode, count silence
-                            self.silent_chunks += 1
-                            self.audio_buffer.append(chunk)  # Keep recording silence too
-                            
-                            # Check if we've reached silence threshold
-                            if self.silent_chunks >= self.silent_chunks_threshold:
-                                # End of speech detected
-                                is_recording = False
-                                print("Silence threshold reached, processing audio...")
-                                self._on_transcribing()
+            while not self.should_stop:
+                # Get audio chunk - this is non-blocking and very fast
+                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
                 
-                                # Save audio to temp file for transcription
-                                self._save_and_transcribe()
-                        
-                    # Small sleep to prevent high CPU usage
-                    time.sleep(0.001)
-            
-            except Exception as e:
-                print(f"Error in audio capture loop: {str(e)}")
-                import traceback
-                print(traceback.format_exc())
-                self._on_error(str(e))
-            finally:
-                # Clean up
-                try:
-                    stream.stop_stream()
-                    stream.close()
-                except:
-                    pass  # Stream might already be closed
+                # Check if chunk contains speech
+                contains_speech = self._is_speech(chunk)
                 
-                # Reset status if we're still running
-                if not self.should_stop:
-                    self._on_idle()
+                # State machine logic
+                if contains_speech:
+                    # Reset silence counter
+                    self.silent_chunks = 0
+                    
+                    # Start recording if not already
+                    if not is_recording:
+                        is_recording = True
+                        self.audio_buffer = []  # Clear buffer
+                        print("Speech detected, recording...")
+                    
+                    # Add chunk to buffer
+                    self.audio_buffer.append(chunk)
+                else:
+                    # No speech detected
+                    if is_recording:
+                        # Still in recording mode, count silence
+                        self.silent_chunks += 1
+                        self.audio_buffer.append(chunk)  # Keep recording silence too
+                        
+                        # Check if we've reached silence threshold
+                        if self.silent_chunks >= self.silent_chunks_threshold:
+                            # End of speech detected
+                            is_recording = False
+                            print("Silence threshold reached, processing audio...")
+        
+                            # Save audio to temp file for transcription
+                            self._save_and_transcribe()
+                    
+                # Small sleep to prevent high CPU usage
+                time.sleep(0.001)
         
         except Exception as e:
-            print(f"Error initializing audio capture: {str(e)}")
+            print(f"Error in audio capture: {str(e)}")
             import traceback
             print(traceback.format_exc())
-            self._on_error(str(e))
+        finally:
+            # Clean up
+            stream.stop_stream()
+            stream.close()
     
     def _save_and_transcribe(self):
         """

@@ -21,6 +21,14 @@ from command_processor import CommandProcessor
 # Import the overlay manager
 from overlay_manager import OverlayManager
 
+# Add PyObjC for global shortcuts
+try:
+    from AppKit import NSEvent, NSApplication, NSKeyDownMask, NSEventTypeKeyDown, NSCommandKeyMask, NSShiftKeyMask
+    HAS_PYOBJC = True
+except ImportError:
+    # Silently handle missing PyObjC - it should be installed via requirements.txt
+    HAS_PYOBJC = False
+
 class SingleInstanceChecker:
     """
     Ensures only one instance of the application is running.
@@ -82,6 +90,69 @@ class SuperCodeApp(rumps.App):
             None,  # Separator
             rumps.MenuItem("About", callback=self.show_about)
         ]
+        
+        # Set up global keyboard shortcut
+        self.setup_global_shortcut()
+    
+    def setup_global_shortcut(self):
+        """Set up global keyboard shortcut (Command + Shift + L)"""
+        try:
+            # Only set up if PyObjC is available
+            if HAS_PYOBJC:
+                print("Setting up global keyboard shortcut: Command + Shift + L")
+                
+                # Create a monitor for key events
+                mask = NSKeyDownMask
+                NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+                    mask, self.handle_keyboard_event
+                )
+                print("Global keyboard shortcut monitor registered")
+            else:
+                # Log to console but don't show error to user
+                print("PyObjC not available, global shortcut disabled")
+        except Exception as e:
+            print(f"Error setting up global shortcut: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def handle_keyboard_event(self, event):
+        """Handle global keyboard events"""
+        try:
+            # Check if event is our shortcut (Command + Shift + L)
+            if (event.type() == NSEventTypeKeyDown and
+                event.modifierFlags() & NSCommandKeyMask and
+                event.modifierFlags() & NSShiftKeyMask and
+                event.characters() and
+                event.characters().lower() == 'l'):
+                
+                print("Global shortcut triggered: Command + Shift + L")
+                
+                # Use rumps.Timer to run toggle_listening on the main thread
+                # since we can't directly call it from the event handler
+                rumps.Timer(self.toggle_listening_from_shortcut, 0.1).start()
+                
+                return True
+        except Exception as e:
+            print(f"Error handling keyboard event: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return False
+    
+    def toggle_listening_from_shortcut(self, _):
+        """Toggle listening from a global shortcut (ensures running on main thread)"""
+        print("Toggling listening from global shortcut")
+        
+        # Find the menu item and update its state
+        for item in self.menu:
+            if hasattr(item, 'title') and (item.title == "Start Listening" or item.title == "Stop Listening"):
+                if self.is_listening:
+                    item.title = "Start Listening"
+                    self.stop_listening()
+                else:
+                    item.title = "Stop Listening"
+                    self.start_listening()
+                break
     
     def toggle_listening(self, sender):
         """Toggle the listening state with visual feedback"""
@@ -327,43 +398,118 @@ class EnhancedSpeechHandler(FastSpeechHandler):
         self.overlay_manager = overlay  # This is the overlay_manager
         self.audio_data_buffer = []
         self.stop_callback = stop_callback  # Callback to stop listening completely
+    
+    # Override the audio capture loop to update the overlay
+    def _audio_capture_loop(self):
+        """Continuously capture audio and update the overlay"""
+        print(f"Initializing audio capture...")
         
-        # Set up status update callbacks if overlay manager is available
+        # Ensure the overlay shows initializing
         if self.overlay_manager:
-            self.set_status_callbacks(
-                initializing=self._on_status_initializing,
-                idle=self._on_status_idle,
-                recording=self._on_status_recording,
-                transcribing=self._on_status_transcribing,
-                error=self._on_status_error
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, "Preparing microphone...")
+        
+        try:
+            # Open audio stream
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk_size
             )
-    
-    # Define callback methods to update overlay
-    def _on_status_initializing(self, message):
-        """Handle initializing status update"""
-        if self.overlay_manager:
-            self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, message)
-    
-    def _on_status_idle(self):
-        """Handle idle status update"""
-        if self.overlay_manager:
-            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
-    
-    def _on_status_recording(self):
-        """Handle recording status update"""
-        if self.overlay_manager:
-            self.overlay_manager.update_status(self.overlay_manager.STATUS_RECORDING)
-    
-    def _on_status_transcribing(self):
-        """Handle transcribing status update"""
-        if self.overlay_manager:
-            self.overlay_manager.update_status(self.overlay_manager.STATUS_TRANSCRIBING)
-    
-    def _on_status_error(self, error_message):
-        """Handle error status update"""
-        if self.overlay_manager:
-            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, "Error: " + error_message)
-    
+            
+            # Calibration period - let the mic warm up
+            print("Calibrating microphone... Please wait.")
+            
+            # Minimum initialization time to ensure users see the initializing status
+            # This also gives time for the microphone to stabilize
+            time.sleep(2.0)
+            
+            # Now we're ready to listen
+            print(f"Ready! Listening for activation word: '{self.activation_word}'\n")
+            
+            # Update overlay status to idle - now we're ready
+            if self.overlay_manager:
+                self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+            
+            # State tracking
+            is_recording = False
+            
+            try:
+                while not self.should_stop:
+                    # Get audio chunk - this is non-blocking and very fast
+                    chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                    
+                    # Check if chunk contains speech
+                    contains_speech = self._is_speech(chunk)
+                    
+                    # State machine logic
+                    if contains_speech:
+                        # Reset silence counter
+                        self.silent_chunks = 0
+                        
+                        # Start recording if not already
+                        if not is_recording:
+                            is_recording = True
+                            self.audio_buffer = []  # Clear buffer
+                            print("Speech detected, recording...")
+                            
+                            # Update overlay status
+                            if self.overlay_manager:
+                                self.overlay_manager.update_status(self.overlay_manager.STATUS_RECORDING)
+                        
+                        # Add chunk to buffer
+                        self.audio_buffer.append(chunk)
+                    else:
+                        # No speech detected
+                        if is_recording:
+                            # Still in recording mode, count silence
+                            self.silent_chunks += 1
+                            self.audio_buffer.append(chunk)  # Keep recording silence too
+                            
+                            # Check if we've reached silence threshold
+                            if self.silent_chunks >= self.silent_chunks_threshold:
+                                # End of speech detected
+                                is_recording = False
+                                print("Silence threshold reached, processing audio...")
+                                
+                                # Update overlay status
+                                if self.overlay_manager:
+                                    self.overlay_manager.update_status(self.overlay_manager.STATUS_TRANSCRIBING)
+                
+                                # Save audio to temp file for transcription
+                                self._save_and_transcribe()
+                        
+                    # Small sleep to prevent high CPU usage
+                    time.sleep(0.001)
+            
+            except Exception as e:
+                print(f"Error in audio capture loop: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                # Make sure we reset the overlay status in case of error
+                if self.overlay_manager:
+                    self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, "Error: " + str(e))
+            finally:
+                # Clean up
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except:
+                    pass  # Stream might already be closed
+                
+                # Reset overlay status if we're still running
+                if not self.should_stop and self.overlay_manager:
+                    self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+        
+        except Exception as e:
+            print(f"Error initializing audio capture: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            # Update overlay with error
+            if self.overlay_manager:
+                self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, "Error: " + str(e))
+
     # Override process_recognized_text to update overlay
     def _process_recognized_text(self, text):
         """Process recognized text and update overlay"""
