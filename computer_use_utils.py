@@ -1,6 +1,7 @@
 import os
 import base64
 import io
+import time
 import pyautogui
 import platform
 import subprocess
@@ -191,3 +192,140 @@ def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
     else:
         print("Failed to get coordinates from Claude")
         return None
+
+
+def get_windsurf_project_window_name(project_contained_name: str):
+    # Windsurf runs as an Electron app, so we need to check the window names
+    script = '''
+        tell application "System Events"
+            tell process "Electron"
+                set theWindowNames to name of every window
+            end tell
+        end tell
+        return theWindowNames
+    '''
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+    window_names = result.stdout.strip().split(",")
+    return next((name.strip() for name in window_names if project_contained_name in name), None)
+
+def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_title: str):
+    """
+    Focus the appropriate IDE window based on the current interface.
+    
+    Returns:
+        bool: True if the window was successfully focused, False otherwise
+    """
+    try:
+        # Generic fallback for unknown interfaces - try to use the interface name as the app name
+        if app_name not in possible_apps_names:
+            print(f"No explicit application mapping defined for interface: {app_name}")
+            raise ValueError(f"No explicit application mapping defined for interface: {app_name}")
+
+        if platform.system() == "Darwin":
+            # If the application is Google Chrome, or if it's Lovable or Bolt,
+            # then use Chrome to find the tab with the window_title.
+            if app_name in ["Lovable", "Bolt"]:
+                script = f'''
+                tell application "Google Chrome"
+                    activate
+                    set tabFound to false
+                    repeat with w in windows
+                        set tabCount to count of tabs in w
+                        repeat with i from 1 to tabCount
+                            if (title of (tab i of w) contains "{window_title}") then
+                                set active tab index of w to i
+                                -- Bring the window to the front
+                                set index of w to 1
+                                set tabFound to true
+                                exit repeat
+                            end if
+                        end repeat
+                        if tabFound then exit repeat
+                    end repeat
+                    return tabFound
+                end tell
+                '''
+                result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+                tab_found = result.stdout.strip() == "true"
+                if tab_found:
+                    print(f"Focused Google Chrome tab with title containing '{window_title}' for interface '{app_name}'")
+                    return True
+                else:
+                    print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_title}'")
+                    return False
+            elif app_name in ["Windsurf", "Cursor"]:
+                if app_name == "Windsurf":
+                    # For Windsurf, find window by title
+                    window_name = get_windsurf_project_window_name(window_title)
+                    if not window_name:
+                        print(f"Warning: Could not find Windsurf window containing '{window_title}'")
+                        return False
+                elif app_name == "Cursor":
+                    window_name = window_title
+
+                script = f'''
+                    tell application "{app_name}"
+                        activate
+                        end tell
+                        
+                        tell application "System Events"
+                            tell process "{app_name}"
+                                set frontmost to true
+                                repeat with w in windows
+                                    if name of w contains "{window_name}" then
+                                        perform action "AXRaise" of w
+                                        exit repeat
+                                    end if
+                                end repeat
+                            end tell
+                        end tell
+                    '''
+                subprocess.run(["osascript", "-e", script], check=True)
+                print(f"Focused {app_name} window containing '{window_title}'")
+                return True
+            else:
+                script = f'''
+                tell application "{app_name}"
+                    activate
+                end tell
+
+                tell application "System Events"
+                    tell process "{app_name}"
+                        set frontmost to true
+                        repeat with w in windows
+                            if name of w contains "{window_title}" then
+                                perform action "AXRaise" of w
+                                exit repeat
+                            end if
+                        end repeat
+                    end tell
+                end tell
+                '''
+                subprocess.run(["osascript", "-e", script], check=True)
+                print(f"Focused {app_name} window")
+                return True
+
+        elif platform.system() == "Windows":
+            # Windows-specific focusing script would be implemented here
+            print("Window focusing not implemented for Windows")
+            return False
+        else:
+            print(f"Window focusing not implemented for {platform.system()}")
+            return False
+    except Exception as e:
+        print(f"Error focusing window: {e}")
+        return False
+
+
+def test_bring_to_front_window():
+    bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'ai-syndicate')
+    time.sleep(2)
+    
+    bring_to_front_window(['Cursor', 'Lovable', 'Bolt'], 'Lovable', 'blabla')
+    time.sleep(2)
+
+    bring_to_front_window(['Cursor', 'Windsurf', 'Lovable', 'Bolt'], 'Windsurf', 'gemini')
+    time.sleep(2)
+    
+    bring_to_front_window(['Cursor', 'Windsurf', 'Lovable', 'Bolt'], 'Cursor', 'bug')
+    time.sleep(2)
