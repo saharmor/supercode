@@ -73,7 +73,7 @@ class SuperCodeApp(rumps.App):
         super(SuperCodeApp, self).__init__("SuperCode", 
                                           icon=None,
                                           title=None,
-                                          quit_button=rumps.MenuItem("Quit", key="q"))
+                                          quit_button=rumps.MenuItem("Quit"))
         
         self.is_listening = False
         self.listen_thread = None
@@ -89,7 +89,7 @@ class SuperCodeApp(rumps.App):
         
         # Create menu items
         self.menu = [
-            rumps.MenuItem("Start Listening", callback=self.toggle_listening, key="l"),
+            rumps.MenuItem("Start Listening", callback=self.toggle_listening),
             None,  # Separator
             rumps.MenuItem("About", callback=self.show_about)
         ]
