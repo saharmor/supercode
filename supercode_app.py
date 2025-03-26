@@ -126,6 +126,12 @@ class SuperCodeApp(rumps.App):
             
         self.is_listening = True
         
+        # Always show the overlay when starting
+        self.show_overlay()
+        
+        # Set initializing status
+        self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, "Preparing microphone...")
+        
         # Create a new thread to run the whisper streaming handler
         self.listen_thread = threading.Thread(target=self.run_whisper_handler)
         self.listen_thread.daemon = True
@@ -135,8 +141,7 @@ class SuperCodeApp(rumps.App):
         use_openai_api = os.getenv("USE_OPENAI_API", "false").lower() == "true"
         service_name = "OpenAI Whisper API" if use_openai_api else "Google Speech Recognition"
         
-        # Update the overlay status
-        self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+        # The handler will set the status to idle when fully ready
         
         rumps.notification("SuperCode", f"Voice Recognition Active ({service_name})", "Say commands starting with 'activate'")
     
@@ -267,6 +272,23 @@ Example: Say "activate type hello world"
             # Start listening
             self.start_listening()
 
+    def run(self):
+        """Run the app and ensure cleanup on exit"""
+        try:
+            super().run()
+        finally:
+            # Ensure the overlay is hidden when the app exits
+            self.cleanup()
+    
+    def cleanup(self):
+        """Clean up resources when the app exits"""
+        print("Cleaning up SuperCode resources...")
+        # Hide the overlay
+        self.hide_overlay()
+        # Stop listening if active
+        if self.is_listening:
+            self.stop_listening()
+
 
 class EnhancedCommandProcessor(CommandProcessor):
     """
@@ -305,88 +327,43 @@ class EnhancedSpeechHandler(FastSpeechHandler):
         self.overlay_manager = overlay  # This is the overlay_manager
         self.audio_data_buffer = []
         self.stop_callback = stop_callback  # Callback to stop listening completely
-    
-    # Override the audio capture loop to update the overlay
-    def _audio_capture_loop(self):
-        """Continuously capture audio and update the overlay"""
-        print(f"Listening for activation word: '{self.activation_word}'\n")
         
-        # Update overlay status
+        # Set up status update callbacks if overlay manager is available
+        if self.overlay_manager:
+            self.set_status_callbacks(
+                initializing=self._on_status_initializing,
+                idle=self._on_status_idle,
+                recording=self._on_status_recording,
+                transcribing=self._on_status_transcribing,
+                error=self._on_status_error
+            )
+    
+    # Define callback methods to update overlay
+    def _on_status_initializing(self, message):
+        """Handle initializing status update"""
+        if self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, message)
+    
+    def _on_status_idle(self):
+        """Handle idle status update"""
         if self.overlay_manager:
             self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
-        
-        # Open audio stream
-        stream = self.audio.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk_size
-        )
-        
-        # State tracking
-        is_recording = False
-        
-        try:
-            while not self.should_stop:
-                # Get audio chunk - this is non-blocking and very fast
-                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
-                
-                # We can't update audio levels with the current implementation
-                # In a future implementation with IPC, we could pass audio data
-                
-                # Check if chunk contains speech
-                contains_speech = self._is_speech(chunk)
-                
-                # State machine logic
-                if contains_speech:
-                    # Reset silence counter
-                    self.silent_chunks = 0
-                    
-                    # Start recording if not already
-                    if not is_recording:
-                        is_recording = True
-                        self.audio_buffer = []  # Clear buffer
-                        print("Speech detected, recording...")
-                        
-                        # Update overlay status
-                        if self.overlay_manager:
-                            self.overlay_manager.update_status(self.overlay_manager.STATUS_RECORDING)
-                    
-                    # Add chunk to buffer
-                    self.audio_buffer.append(chunk)
-                else:
-                    # No speech detected
-                    if is_recording:
-                        # Still in recording mode, count silence
-                        self.silent_chunks += 1
-                        self.audio_buffer.append(chunk)  # Keep recording silence too
-                        
-                        # Check if we've reached silence threshold
-                        if self.silent_chunks >= self.silent_chunks_threshold:
-                            # End of speech detected
-                            is_recording = False
-                            print("Silence threshold reached, processing audio...")
-                            
-                            # Update overlay status
-                            if self.overlay_manager:
-                                self.overlay_manager.update_status(self.overlay_manager.STATUS_TRANSCRIBING)
-                
-                            # Save audio to temp file for transcription
-                            self._save_and_transcribe()
-                    
-                # Small sleep to prevent high CPU usage
-                time.sleep(0.001)
-        
-        except Exception as e:
-            print(f"Error in audio capture: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
-        finally:
-            # Clean up
-            stream.stop_stream()
-            stream.close()
-
+    
+    def _on_status_recording(self):
+        """Handle recording status update"""
+        if self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_RECORDING)
+    
+    def _on_status_transcribing(self):
+        """Handle transcribing status update"""
+        if self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_TRANSCRIBING)
+    
+    def _on_status_error(self, error_message):
+        """Handle error status update"""
+        if self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, "Error: " + error_message)
+    
     # Override process_recognized_text to update overlay
     def _process_recognized_text(self, text):
         """Process recognized text and update overlay"""
@@ -395,62 +372,53 @@ class EnhancedSpeechHandler(FastSpeechHandler):
         
         # Check for stop command
         if self.activation_word in text_lower:
+            # Process text and execute any commands found
             commands = self.command_queue.process_text(text)
             
-            # Check for stop command
-            for command in commands:
-                command_lower = command.lower()
-                
-                # Handle stop command
-                if command_lower == "stop":
-                    print("Stopping voice recognition via command")
-                    if self.overlay_manager:
-                        self.overlay_manager.update_status("Voice Recognition Stopped", "Stopped via voice command")
-                    
-                    # Execute the stop command to play audio feedback
-                    if self.command_processor:
-                        self.command_processor.execute_command("stop")
-                    
-                    # Call the stop callback if provided
-                    if self.stop_callback:
-                        # Use threading to avoid blocking
-                        threading.Timer(1.0, self.stop_callback).start()
-                    return
-        
-        # Regular command processing
-        # Check if the activation word is in the text
-        if self.activation_word in text_lower:
-            # Process text and execute any commands found
-            if self.command_processor:
-                commands = self.command_queue.process_text(text)
-                
+            if self.command_processor and commands:
                 # Update overlay with commands if available
-                if self.overlay_manager and commands:
+                if self.overlay_manager:
                     cmd_text = ", ".join(commands)
                     self.overlay_manager.update_status(self.overlay_manager.STATUS_EXECUTING, cmd_text)
+                
+                # Execute commands and track results
+                for command in commands:
+                    # Get the command type (first word)
+                    command_type = command.split(" ")[0] if command else ""
                     
-                    # Execute commands and track results
-                    for command in commands:
-                        # Get the command type (first word)
-                        command_type = command.split(" ")[0] if command else ""
+                    # Handle stop command specially
+                    if command_type == "stop":
+                        print("Stopping voice recognition via command")
+                        if self.overlay_manager:
+                            self.overlay_manager.update_status("Voice Recognition Stopped", "Stopped via voice command")
                         
-                        # Check if it's a known command type
-                        if command_type not in ["type", "click", "learn", "change", "stop"]:
-                            # Unknown command type - show special message
-                            print(f"Unknown command type: '{command_type}'")
+                        # Execute the stop command to play audio feedback
+                        self.command_processor.execute_command("stop")
+                        
+                        # Call the stop callback if provided
+                        if self.stop_callback:
+                            # Use threading to avoid blocking
+                            threading.Timer(1.0, self.stop_callback).start()
+                        return
+                    
+                    # Handle other known command types
+                    elif command_type in ["type", "click", "learn", "change"]:
+                        try:
+                            self.command_processor.execute_command(command)
+                        except Exception as e:
+                            print(f"Error executing command: {e}")
+                    
+                    # Unknown command type - show special message
+                    else:
+                        print(f"Unknown command type: '{command_type}'")
+                        if self.overlay_manager:
                             self.overlay_manager.update_status(
-                                self.overlay_manager.STATUS_IDLE, 
+                                self.overlay_manager.STATUS_IDLE,
                                 f"[Ignored, unknown command] {command}"
                             )
                             # Schedule reset of overlay status after 3 seconds
                             threading.Timer(3.0, lambda: self.overlay_manager.update_status(
                                 self.overlay_manager.STATUS_IDLE)).start()
-                        else:
-                            # Known command type - execute it
-                            try:
-                                self.command_processor.execute_command(command)
-                            except Exception as e:
-                                print(f"Error executing command: {e}")
                 
                 # Reset overlay status if no commands were found
                 if self.overlay_manager and not commands:
@@ -461,7 +429,7 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                 # Truncate text if longer than 20 words
                 words = text.split()
                 if len(words) > 20:
-                    truncated = " ".join(words[:20]) + "..."
+                    truncated = " ".join(words[:20]) + "…"
                 else:
                     truncated = text
                     
@@ -489,6 +457,7 @@ def main():
             ps_output = subprocess.check_output(['ps', 'aux']).decode('utf-8')
             
             # Find any python processes running supercode_app.py
+            current_pid = os.getpid()
             for line in ps_output.split('\n'):
                 if 'python' in line and 'supercode_app.py' in line and 'ps aux' not in line:
                     # Extract the PID (second column in ps aux output)
@@ -496,13 +465,15 @@ def main():
                         parts = [p for p in line.split() if p]
                         if len(parts) > 1:
                             pid = int(parts[1])
-                            # Don't kill our own process
-                            if pid != os.getpid():
-                                print(f"Killing existing SuperCode process with PID {pid}")
-                                # Send SIGTERM signal
-                                os.kill(pid, signal.SIGTERM)
-                                # Give it a moment to terminate
-                                time.sleep(0.5)
+                            # Skip if this is our own process
+                            if pid == current_pid:
+                                continue
+                                
+                            print(f"Killing existing SuperCode process with PID {pid}")
+                            # Send SIGTERM signal
+                            os.kill(pid, signal.SIGTERM)
+                            # Give it a moment to terminate
+                            time.sleep(0.5)
                     except Exception as e:
                         print(f"Error killing process: {e}")
             

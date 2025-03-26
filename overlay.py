@@ -13,19 +13,14 @@ import json
 import argparse
 import math
 
+from overlay_manager import OverlayManager
+
 class StatusOverlay(QWidget):
     """
     Status overlay that shows:
     - Status visualization
     - Current status text (Listening, Recording, Transcribing, Executing)
     """
-    
-    # Status constants
-    STATUS_IDLE = "Listening for 'activate'"
-    STATUS_RECORDING = "Recording..."
-    STATUS_TRANSCRIBING = "Transcribing..."
-    STATUS_EXECUTING = "Executing command"
-    STATUS_STOPPED = "Voice Recognition Stopped"
     
     # Colors
     COLOR_BG = QColor("#efe0c2")  # Beige background
@@ -53,7 +48,7 @@ class StatusOverlay(QWidget):
         self.last_status_modified = 0
         
         # State variables
-        self.current_status = self.STATUS_IDLE
+        self.current_status = OverlayManager.STATUS_INITIALIZING
         self.additional_info = ""
         self.is_recording = False
         self.animation_frame = 0
@@ -117,13 +112,13 @@ class StatusOverlay(QWidget):
                 # File has been modified, read the status
                 with open(self.status_file, 'r') as f:
                     data = json.loads(f.read())
-                    status = data.get("status", self.STATUS_IDLE)
+                    status = data.get("status", OverlayManager.STATUS_INITIALIZING)
                     info = data.get("info", "")
                     
                     # Update overlay status
                     self.current_status = status
                     self.additional_info = info
-                    self.is_recording = status == self.STATUS_RECORDING
+                    self.is_recording = status == OverlayManager.STATUS_RECORDING
                     self.update()
                     
                     print(f"Status updated: {status} - {info}")
@@ -164,9 +159,9 @@ class StatusOverlay(QWidget):
         pulse_factor = abs(math.sin(self.animation_frame * 0.08)) * 0.4 + 0.6  # 0.6 to 1.0 range with slower frequency
         
         # Draw glowing circle effect first (subtle shadow)
-        if self.current_status == self.STATUS_EXECUTING or self.current_status == self.STATUS_IDLE:
+        if self.current_status == "Executing command" or self.current_status == "Listening for 'activate'":
             # Select color based on status
-            dot_color = self.COLOR_STATUS if self.current_status == self.STATUS_EXECUTING else self.COLOR_IDLE
+            dot_color = self.COLOR_STATUS if self.current_status == "Executing command" else self.COLOR_IDLE
             
             # Draw outer glow
             for i in range(3):
@@ -196,11 +191,11 @@ class StatusOverlay(QWidget):
         
         # Draw status text
         status_color = self.COLOR_TEXT
-        if self.current_status == self.STATUS_RECORDING:
+        if self.current_status == OverlayManager.STATUS_RECORDING:
             status_color = self.COLOR_RECORDING  # Now green instead of red
-        elif self.current_status == self.STATUS_IDLE:
+        elif self.current_status == OverlayManager.STATUS_IDLE:
             status_color = self.COLOR_IDLE
-        elif self.current_status == self.STATUS_EXECUTING:
+        elif self.current_status == OverlayManager.STATUS_EXECUTING:
             status_color = self.COLOR_STATUS
             
         painter.setPen(status_color)
@@ -216,12 +211,20 @@ class StatusOverlay(QWidget):
             painter.setPen(self.COLOR_TEXT)
             info_font = QFont("SF Pro Text", 15)  # Bigger font for command text
             painter.setFont(info_font)
+            
+            # Truncate text if longer than 20 words
+            words = self.additional_info.split()
+            if len(words) > 20:
+                truncated_text = " ".join(words[:20]) + "…"
+            else:
+                truncated_text = self.additional_info
+                
             # Center the command text
             text_rect = QRectF(padding, padding + 55, width, 50)
-            painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, self.additional_info)
-            
+            painter.drawText(text_rect, Qt.AlignCenter | Qt.TextWordWrap, truncated_text)
+        
         # Draw Start Listening button when voice recognition is stopped
-        if self.current_status == self.STATUS_STOPPED:
+        if self.current_status == OverlayManager.STATUS_STOPPED:
             # Calculate button rect
             button_width = 160
             button_height = 40
@@ -261,7 +264,7 @@ class StatusOverlay(QWidget):
             return
             
         # Check if the status is stopped and click is on the Start Listening button
-        if self.current_status == self.STATUS_STOPPED:
+        if self.current_status == OverlayManager.STATUS_STOPPED:
             # Calculate button rect
             button_width = 160
             button_height = 40
@@ -329,7 +332,7 @@ class StatusOverlay(QWidget):
         self.additional_info = additional_info
         
         # Update recording state based on status
-        self.is_recording = status == self.STATUS_RECORDING
+        self.is_recording = status == OverlayManager.STATUS_RECORDING
         
         # Trigger update if window is visible
         if self.isVisible():

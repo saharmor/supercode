@@ -25,6 +25,7 @@ class OverlayManager:
     STATUS_TRANSCRIBING = "Transcribing..."
     STATUS_EXECUTING = "Executing command"
     STATUS_STOPPED = "Voice Recognition Stopped"
+    STATUS_INITIALIZING = "Initializing..."
     
     def __init__(self):
         """Initialize the overlay manager"""
