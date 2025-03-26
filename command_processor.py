@@ -88,7 +88,13 @@ class CommandProcessor:
         # Initialize the interface if not already in actions_coordinates
         if interface_name not in self.actions_coordinates:
             self.actions_coordinates[interface_name] = {}
-            
+
+        # toggle the agent interface TODO check if it's open and avoid opening it again
+        if interface_name == "cursor":
+            pyautogui.hotkey('command', 'i')
+        elif interface_name == "windsurf":
+            pyautogui.hotkey('command', 'l')
+
         interface_commands = self.interface_config[interface_name]['commands']
         for cmd_name, cmd_data in interface_commands.items():
             coords = get_coordinates_for_prompt(cmd_data['llm_selector'])
@@ -197,20 +203,27 @@ class CommandProcessor:
             btn_selector = " ".join(command_params.split(" ")[1:])
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector)
         elif command_type == "change":
-            target_interface = command_params.lower().strip()
+            # TODO handle cases where changing to the same project name
+            change_params = command_params.lower().strip().split()
+            target_interface = change_params[0]
             for interface_name in self.interface_config.keys():
                 if target_interface in self.interface_config[interface_name].get("transcribed_similar_words", []):
                     target_interface = interface_name
-                    
+            
+            if target_interface not in self.interface_config.keys():
+                print(f"Unknown interface: '{target_interface}'. Valid options are {self.interface_config.keys()}")
+                play_beep(1200, 1000)  # Error beep
+                return False
+            
+            project_name = " ".join(change_params[1:])
+            bring_to_front_window(self.interface_config.keys(), target_interface, project_name)
+            self.current_project_name = get_current_window_name()
+
             success = self.initialize_interface(target_interface)
             if success:
                 print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
                 os.system(f"say 'Voice changed to {target_interface}'")
                 self.current_interface = target_interface
-            else:
-                print(f"Unknown interface: '{interface_name}'. Valid options are 'windsurf' or 'lovable'")
-                play_beep(1200, 1000)  # Error beep
-                return False
             
             self.current_interface = target_interface
         elif command_type == "stop":

@@ -236,6 +236,8 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
         if platform.system() == "Darwin":
             # If the application is Google Chrome, or if it's Lovable or Bolt,
             # then use Chrome to find the tab with the window_title.
+            window_name_for_script = window_name if window_name else app_name
+
             if app_name in ["lovable", "bolt"]:
                 script = f'''
                 tell application "Google Chrome"
@@ -244,7 +246,7 @@ def bring_to_front_window(possible_apps_names: list[str], app_name: str, window_
                     repeat with w in windows
                         set tabCount to count of tabs in w
                         repeat with i from 1 to tabCount
-                            if (title of (tab i of w) contains "{window_name}") then
+                            if (title of (tab i of w) contains "{window_name_for_script}") then
                                 set active tab index of w to i
                                 -- Bring the window to the front
                                 set index of w to 1
@@ -320,15 +322,19 @@ def test_bring_to_front_window():
 def get_current_window_name():
     script = '''
     tell application "System Events"
-        -- 1) Find the process whose frontmost is true (the active app).
         set frontProcess to first process whose frontmost is true
-        
-        -- 2) Get the front window of that process.
-        set frontWindow to front window of frontProcess
-        
-        -- 3) Return (print) the name (title) of that front window.
-        return name of frontWindow
+        set processName to name of frontProcess
     end tell
+
+    if processName is "Google Chrome" then
+        tell application "Google Chrome"
+            return title of active tab of front window
+        end tell
+    else
+        tell application "System Events"
+            return name of front window of frontProcess
+        end tell
+    end if
     '''
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
     window_name = result.stdout.strip()
