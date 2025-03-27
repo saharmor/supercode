@@ -32,8 +32,9 @@ class CommandProcessor:
     DEFAULT_IDE = 'windsurf'
     # DEFAULT_IDE = 'lovable'
     
-    def __init__(self):
+    def __init__(self, app=None):
         self.current_interface = os.getenv("DEFAULT_IDE", self.DEFAULT_IDE)
+        self.app = app  # Reference to the main app for interface name updates
 
         # Load interface configuration from JSON file
         self.interface_config = self._load_interface_config()
@@ -135,6 +136,49 @@ class CommandProcessor:
             
     
     
+    def change_interface(self, command_params):
+        # TODO handle cases where changing to the same project name
+        change_params = command_params.lower().strip().split()
+        target_interface = change_params[0]
+        for interface_name in self.interface_config.keys():
+            if target_interface in self.interface_config[interface_name].get("transcribed_similar_words", []):
+                target_interface = interface_name
+        
+        if target_interface not in self.interface_config.keys():
+            print(f"Unknown interface: '{target_interface}'. Valid options are {self.interface_config.keys()}")
+            play_beep(1200, 1000)  # Error beep
+            return False
+        
+        project_name = " ".join(change_params[1:])
+        bring_to_front_window(self.interface_config.keys(), target_interface, project_name)
+        self.current_project_name = get_current_window_name()
+
+        success = self.initialize_interface(target_interface)
+        if success:
+            print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
+            
+            # Update the overlay manager with the new interface name (if available via app)
+            if hasattr(self, 'app') and self.app:
+                # Create a display name combining interface and project
+                display_name = target_interface
+                if self.current_project_name:
+                    display_name = f"{target_interface} - {self.current_project_name}"
+                
+                print(f"Updating interface display name to: {display_name}")
+                self.app.set_current_interface(display_name.capitalize())
+            
+            # Audio notification
+            if project_name:
+                os.system(f"say 'Development environment changed to {target_interface} project {project_name}'")
+            else:
+                os.system(f"say 'Development environment changed to {target_interface}'")
+            self.current_interface = target_interface
+        else:
+            print(f"Error: Could not initialize {target_interface} interface")
+            play_beep(1200, 1000)
+            return False
+            
+        
     def execute_command(self, command_text):
         """
         Execute a command based on the transcribed text.
@@ -206,34 +250,7 @@ class CommandProcessor:
             btn_selector = " ".join(command_params.split(" ")[1:])
             self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector, monitor=self.interface_monitor_region)
         elif command_type == "change":
-            # TODO handle cases where changing to the same project name
-            change_params = command_params.lower().strip().split()
-            target_interface = change_params[0]
-            for interface_name in self.interface_config.keys():
-                if target_interface in self.interface_config[interface_name].get("transcribed_similar_words", []):
-                    target_interface = interface_name
-            
-            if target_interface not in self.interface_config.keys():
-                print(f"Unknown interface: '{target_interface}'. Valid options are {self.interface_config.keys()}")
-                play_beep(1200, 1000)  # Error beep
-                return False
-            
-            project_name = " ".join(change_params[1:])
-            bring_to_front_window(self.interface_config.keys(), target_interface, project_name)
-            self.current_project_name = get_current_window_name()
-
-            success = self.initialize_interface(target_interface)
-            if success:
-                print(f"\n==== INTERFACE CHANGED TO: '{target_interface.upper()}' ====\n")
-                if project_name:
-                    os.system(f"say 'Development environment changed to {target_interface} project {project_name}'")
-                else:
-                    os.system(f"say 'Development environment changed to {target_interface}'")
-                self.current_interface = target_interface
-            else:
-                print(f"Error: Could not initialize {target_interface} interface")
-                play_beep(1200, 1000)
-                return False
+            self.change_interface(command_params)
         elif command_type == "stop":
             # Stop command is handled in EnhancedSpeechHandler
             print("Stopping voice recognition")
