@@ -91,6 +91,7 @@ Example commands:
 ## Coming Soon
 - Electron app for a more native experience
 - Claude Code integration with reminder to run /compact
+- Consolidating API providers (currently using Claude, Gemini, and GPT)
 - Gemini Flash / OpenAI Realtime transcription
 - Model selector when using "Activate Type" to optimize credits usage
 - Error detection and fixing suggestions
