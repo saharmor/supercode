@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import openai
 
 # Import the new command processor module
-from command_processor import CommandProcessor, CommandQueue
+from command_processor import CommandQueue
 
 # Load environment variables
 load_dotenv()
@@ -138,6 +138,23 @@ class FastSpeechHandler:
                 input=True,
                 frames_per_buffer=self.chunk_size
             )
+
+            # Calibration step: gather ambient noise for 2 seconds to set the energy threshold
+            calibration_duration = 4  # seconds
+            calibration_samples = []
+            calibration_start = time.time()
+            print("Calibrating ambient noise level...")
+            while time.time() - calibration_start < calibration_duration:
+                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                calibration_samples.append(np.frombuffer(chunk, dtype=np.int16))
+
+            # Compute the average energy of the ambient noise and set the threshold to 150% of that level
+            background_energy = np.mean([
+                np.sqrt(np.mean(np.square(chunk.astype(np.float32))))
+                for chunk in calibration_samples
+            ])
+            self.energy_threshold = max(background_energy * 1.5, self.energy_threshold)  # Set minimum threshold to avoid ultra-quiet environments
+
             
             # Let subclasses do initialization 
             self._after_stream_open()
@@ -286,10 +303,22 @@ class FastSpeechHandler:
                 except queue.Empty:
                     continue
                 
-                # Transcribe the audio file
+                # Check if audio is just random noise
+                with wave.open(audio_file, 'rb') as wf:
+                    # Read audio data
+                    audio_data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+                    # Calculate RMS energy
+                    rms = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
+                    # Check if below noise threshold
+                    if rms < self.energy_threshold * 0.8:  # Use slightly lower threshold
+                        print("Audio appears to be random noise, skipping transcription")
+                        if os.path.exists(audio_file):
+                            os.unlink(audio_file)
+                        self.transcription_queue.task_done()
+                        continue
+                
                 print("Transcribing audio...")
                 start_time = time.time()
-                
                 # Use speech_recognition library to transcribe
                 with sr.AudioFile(audio_file) as source:
                     audio_data = self.recognizer.record(source)
