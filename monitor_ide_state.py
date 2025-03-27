@@ -3,10 +3,36 @@
 Monitor IDE State - A utility for monitoring the state of coding generation AI assistants
 """
 import os
-import sys
 import json
 import time
-import datetime
+from utils import cleanup_old_files
+
+# Global variable to hold reference to the audio handler
+_audio_handler = None
+
+def set_audio_handler(handler):
+    """
+    Set the audio handler reference for callbacks when monitoring is complete.
+    
+    Args:
+        handler: The audio handler instance with a resume_audio_processing method
+    """
+    global _audio_handler
+    _audio_handler = handler
+    
+def signal_monitoring_complete():
+    """
+    Signal to the audio handler that monitoring is complete.
+    Used to resume audio processing after a command has finished executing.
+    """
+    global _audio_handler
+    if _audio_handler and hasattr(_audio_handler, 'resume_audio_processing'):
+        try:
+            _audio_handler.resume_audio_processing()
+        except Exception as e:
+            print(f"Error resuming audio processing: {e}")
+    else:
+        print("No audio handler available or missing resume_audio_processing method")
 import subprocess
 import platform
 from PIL import Image
@@ -55,11 +81,11 @@ def play_sound(sound_file_path):
     try:
         system = platform.system()
         if system == "Darwin":  # macOS
-            subprocess.Popen(["afplay", sound_file_path])
+            subprocess.call(["afplay", sound_file_path])  # Blocking call
         elif system == "Linux":
-            subprocess.Popen(["aplay", sound_file_path])
+            subprocess.call(["aplay", sound_file_path])  # Blocking call
         elif system == "Windows":
-            subprocess.Popen(["powershell", "-c", f"(New-Object Media.SoundPlayer '{sound_file_path}').PlaySync()"])
+            subprocess.call(["powershell", "-c", f"(New-Object Media.SoundPlayer '{sound_file_path}').PlaySync()"])  # Blocking call
         else:
             print(f"Sound playback not supported on {system}")
     except Exception as e:
@@ -142,7 +168,9 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
         return False, f"Error: {str(e)}"
 
 
-def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None):
+def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None, completion_callback=None):
+    # Debug: Print whether we have a callback
+    print(f"Debug: monitor_coding_generation_state received completion_callback: {completion_callback is not None}")
     """
     Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
@@ -187,6 +215,9 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 filename = f"{file_prefix}{timestamp}_screenshot.png"
                 path = os.path.join(output_dir, filename)
                 
+                # Clean up old screenshots, keeping only the newest 10
+                cleanup_old_files(output_dir, f"{file_prefix}*_screenshot.png", max_files=10)
+                
                 # Use the unified screenshot function with a temporary file for analysis
                 image = capture_screenshot(monitor=monitor, temp_file=path)
                 
@@ -211,6 +242,16 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     print("\n✅ Coding generation has completed its task!")
                     sound_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_done.mp3")
                     play_sound(sound_file)
+                    
+                    # Signal completion using the global function
+                    signal_monitoring_complete()
+                    
+                    # Also call the original callback if provided (for backward compatibility)
+                    if completion_callback:
+                        try:
+                            completion_callback()
+                        except Exception as e:
+                            print(f"Error calling callback: {str(e)}")
                     return  # Exit the monitoring loop
                     
                 else:  # still_working
@@ -218,6 +259,9 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     
             except KeyboardInterrupt:
                 print("\n\nMonitoring stopped by user.")
+                # Call the completion callback if provided
+                if completion_callback:
+                    completion_callback()
                 return
                 
             except Exception as e:
@@ -226,4 +270,7 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user.")
+        # Call the completion callback if provided
+        if completion_callback:
+            completion_callback()
         return

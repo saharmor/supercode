@@ -3,6 +3,8 @@ import subprocess
 from openai import OpenAI
 from pydantic import BaseModel
 from typing import Literal
+import os
+import glob
 
 def play_beep(frequency, duration):
     system = platform.system()
@@ -63,3 +65,30 @@ def enhance_user_prompt(command_text):
         print(f"Error enhancing prompt: {e}")
         # Return original prompt if enhancement fails
         return command_text
+
+def cleanup_old_files(directory, pattern, max_files=10):
+    """
+    Maintain a rolling set of files in the given directory, keeping only the newest max_files.
+    
+    Args:
+        directory (str): Directory containing the files
+        pattern (str): Glob pattern to match files (e.g., "*.wav", "*.png")
+        max_files (int): Maximum number of files to keep (default: 10)
+    """
+    if not os.path.exists(directory):
+        return
+        
+    # List all matching files with their full paths
+    files = glob.glob(os.path.join(directory, pattern))
+    
+    # Sort files by modification time (newest last)
+    files.sort(key=os.path.getmtime)
+    
+    # Remove oldest files if we have more than max_files
+    if len(files) > max_files:
+        files_to_remove = files[:-max_files]  # Keep the newest max_files
+        for file_path in files_to_remove:
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Error removing file {file_path}: {e}")

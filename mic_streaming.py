@@ -5,13 +5,18 @@ import queue
 import pyaudio
 import numpy as np
 import wave
-import tempfile
 import os
 from dotenv import load_dotenv
 import openai
 
+
+from utils import cleanup_old_files
+
 # Import the new command processor module
 from command_processor import CommandQueue
+
+# Import monitor_ide_state for audio handler registration
+import monitor_ide_state
 
 # Load environment variables
 load_dotenv()
@@ -60,20 +65,24 @@ class FastSpeechHandler:
                 # Basic validation of API key format
                 if not self.openai_api_key.startswith('sk-') or len(self.openai_api_key) < 20:
                     print("Warning: OPENAI_API_KEY doesn't look valid (should start with 'sk-' and be longer).")
-                    print("Will try to use it anyway, but may fail.")
-                
-                try:
-                    self.openai_client = openai.Client(api_key=self.openai_api_key)
-                except Exception as e:
-                    print(f"Error initializing OpenAI client: {e}")
-                    print("Falling back to Google speech recognition.")
-                    self.use_openai_api = False
+                    print("Transcription may fail if the API key is invalid.")
+        
+        # Register self with monitor_ide_state for callbacks when monitoring completes
+        monitor_ide_state.set_audio_handler(self)
+        
+        try:
+            self.openai_client = openai.Client(api_key=self.openai_api_key)
+        except Exception as e:
+            print(f"Error initializing OpenAI client: {e}")
+            print("Falling back to Google speech recognition.")
+            self.use_openai_api = False
         else:
             print("Using Google speech recognition (OpenAI API not enabled).")
         
         # State variables
         self.listening_for_commands = False
         self.should_stop = False
+        self.paused_for_processing = False  # Flag to pause recording during transcription/execution
         self.transcription_queue = queue.Queue()
         self.current_command = ""
         
@@ -129,6 +138,9 @@ class FastSpeechHandler:
         """
         self._before_audio_capture()
         
+        # Keep track of when we're paused for command processing
+        last_paused_state = False
+        
         try:
             # Open audio stream
             stream = self.audio.open(
@@ -164,6 +176,19 @@ class FastSpeechHandler:
             
             try:
                 while not self.should_stop:
+                    # Check for pause state changes
+                    if self.paused_for_processing != last_paused_state:
+                        last_paused_state = self.paused_for_processing
+                        if self.paused_for_processing:
+                            print("Pausing audio capture while processing command...")
+                        else:
+                            print("Resuming audio capture...")
+                    
+                    # Skip processing if we're paused
+                    if self.paused_for_processing:
+                        time.sleep(0.1)
+                        continue
+                    
                     # Get audio chunk - this is non-blocking and very fast
                     chunk = stream.read(self.chunk_size, exception_on_overflow=False)
                     
@@ -200,6 +225,9 @@ class FastSpeechHandler:
         
                                 # Save audio to temp file for transcription
                                 self._save_and_transcribe()
+                                
+                                # Pause recording until command is processed
+                                self.paused_for_processing = True
                     
                     # Small sleep to prevent high CPU usage
                     time.sleep(0.001)
@@ -252,44 +280,59 @@ class FastSpeechHandler:
     def _on_initialization_error(self, error):
         """Hook called when an error occurs during initialization"""
         pass
+        
+    def resume_audio_processing(self):
+        """Callback to resume audio processing after a command completes."""
+        print("Command completed, resuming audio capture...")
+        self.paused_for_processing = False
+        # Reset overlay status if available
+        if hasattr(self, 'overlay_manager') and self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
     
     def _save_and_transcribe(self):
         """
-        Save audio buffer to a temporary file and queue for transcription.
+        Save audio buffer to a file and queue for transcription.
+        Files are saved permanently in an 'audio_recordings' directory for review.
         """
         if not self.audio_buffer:
             return
         
-        # Create a temporary WAV file - OpenAI requires specific formats
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        # Create a directory for saving audio recordings if it doesn't exist
+        recordings_dir = os.path.join(os.getcwd(), "audio_recordings")
+        if not os.path.exists(recordings_dir):
+            os.makedirs(recordings_dir)
+        
+        # Create a filename with timestamp for easy identification
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        audio_filename = os.path.join(recordings_dir, f"recording_{timestamp}.wav")
+        
+        # Clean up old recordings, keeping only the newest 10
+        cleanup_old_files(recordings_dir, "recording_*.wav", max_files=10)
+        
         try:
             # Ensure we're using a compatible format for OpenAI (16kHz, mono)
-            with wave.open(temp_file.name, 'wb') as wf:
+            with wave.open(audio_filename, 'wb') as wf:
                 wf.setnchannels(self.channels)  # Mono
                 wf.setsampwidth(self.audio.get_sample_size(self.format))  # 16-bit
                 wf.setframerate(self.rate)  # 16kHz
                 wf.writeframes(b''.join(self.audio_buffer))
             
             # Check file size - OpenAI has limits
-            file_size = os.path.getsize(temp_file.name)
+            file_size = os.path.getsize(audio_filename)
             
             # Only send if file is not too small (likely noise) or too large
             if 10 * 1024 <= file_size <= 25 * 1024 * 1024:  # 10KB to 25MB
                 # Queue for transcription - this happens very quickly
-                self.transcription_queue.put(temp_file.name)
+                print(f"Audio saved to: {audio_filename}")
+                self.transcription_queue.put(audio_filename)
             else:
                 if file_size < 10 * 1024:
-                    print("Audio file too small, likely just noise. Skipping transcription.")
+                    print(f"Audio file too small, likely just noise. File saved to: {audio_filename}")
                 else:
-                    print("Audio file too large for API. Skipping transcription.")
-                # Clean up temp file
-                if os.path.exists(temp_file.name):
-                    os.unlink(temp_file.name)
+                    print(f"Audio file too large for API. File saved to: {audio_filename}")
         
         except Exception as e:
             print(f"Error saving audio: {str(e)}")
-            if os.path.exists(temp_file.name):
-                os.unlink(temp_file.name)
     
     def _transcribe_loop(self):
         """
@@ -297,6 +340,12 @@ class FastSpeechHandler:
         """
         while not self.should_stop:
             try:
+                # Check if we should be processing anything
+                if self.paused_for_processing == False and self.transcription_queue.empty():
+                    # Nothing to process and not paused - sleep briefly
+                    time.sleep(0.1)
+                    continue
+                    
                 # Get next file to transcribe with short timeout
                 try:
                     audio_file = self.transcription_queue.get(timeout=0.1)
@@ -331,7 +380,7 @@ class FastSpeechHandler:
                                     model=self.openai_transcription_model,
                                     file=audio_file_obj,
                                     language="en",
-                                    # prompt=""
+                                    prompt="This is a recording of a user interacting with an IDE. Transcribe the user's words from start to finish, without adding anything else!"
                                 )
                                 
                                 text = result.text
@@ -361,11 +410,16 @@ class FastSpeechHandler:
                         audio_file_obj.close()
                         
                         
-                # Clean up the temp file
-                if os.path.exists(audio_file):
-                    os.unlink(audio_file)
-                
                 self.transcription_queue.task_done()
+                
+                # If transcription fails, no command will be processed, but we still need to resume listening
+                # We check if the command queue is now empty, which means no command was found/executed
+                if not hasattr(self, 'command_queue') or self.command_queue.is_empty():
+                    print("No valid command detected, resuming listening...")
+                    self.paused_for_processing = False
+                    # Reset overlay status if available
+                    if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                        self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
             except Exception as e:
                 print(f"Error in transcription loop: {str(e)}")
                 time.sleep(0.5)
@@ -378,7 +432,36 @@ class FastSpeechHandler:
         # Process text and execute any commands found
         if self.command_processor:
             commands = self.command_queue.process_text(text)
-            self.command_queue.execute_commands(commands)
+            
+            # If no activation word was found, we should resume immediately
+            if not commands:
+                print("No activation word found in text, resuming listening...")
+                self.paused_for_processing = False
+                # Reset overlay status if available
+                if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                    self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+                return
+                
+            try:
+                # Check if any command is a "type" command that uses background monitoring
+                has_type_command = any(cmd.strip().startswith("type") for cmd in commands)
+                
+                if has_type_command:
+                    # For "type" commands, wait for completion callback
+                    print("Audio capture will remain paused until command processing completes...")
+                    # Use bound method instead of local function
+                    self.command_queue.execute_commands(commands, self.resume_audio_processing)
+                else:
+                    # For commands without background monitoring, execute and reset immediately
+                    self.command_queue.execute_commands(commands)
+                    self.resume_audio_processing()
+                    
+            except Exception as e:
+                print(f"Error executing commands: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                # Always reset on error
+                resume_audio_processing()
 
 class SpeechActivationHandler:
     def __init__(self, activation_word="activate", silence_duration=2.0, command_processor=None):

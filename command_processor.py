@@ -8,6 +8,7 @@ import os
 import pyautogui
 import threading
 import json
+import time
 from dotenv import load_dotenv
 
 from pydantic import BaseModel
@@ -45,6 +46,9 @@ class CommandProcessor:
         
         # Custom user-defined buttons
         self.buttons = {}
+        
+        # Command tracking
+        self.last_command_time = 0
 
         # Initialize action coordinates based on the current interface
         self.initialize_interface(self.current_interface)
@@ -108,10 +112,14 @@ class CommandProcessor:
         return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
         
         
-    def start_ide_monitoring(self, monitor):
+    def start_ide_monitoring(self, monitor, completion_callback=None):
         """
         Start a background thread that monitors the IDE state until it's done.
         Uses the monitor_ide_state function from monitor_ide_state.py.
+        
+        Args:
+            monitor: Region to monitor for screenshots
+            completion_callback: Optional callback function to call when monitoring completes
         """
         try:
             # Import the function here to avoid circular imports
@@ -126,7 +134,7 @@ class CommandProcessor:
             interface_state_prompt = self.interface_config[self.current_interface]['interface_state_prompt']
             self.interface_monitor_thread = threading.Thread(
                 target=monitor_coding_generation_state,
-                args=(interface_state_prompt, monitor, 2.0, "screenshots", self.current_interface)
+                args=(interface_state_prompt, monitor, 2.0, "screenshots", self.current_interface, completion_callback)
             )
             self.interface_monitor_thread.daemon = True
             self.interface_monitor_thread.start()
@@ -179,13 +187,14 @@ class CommandProcessor:
             return False
             
         
-    def execute_command(self, command_text):
+    def execute_command(self, command_text, completion_callback=None):
         """
         Execute a command based on the transcribed text.
         Override this method to implement your own command execution logic.
         
         Args:
             command_text: The text of the command to execute.
+            completion_callback: Optional callback to call when command execution is complete.
             
         Returns:
             bool: True if the command was executed successfully, False otherwise.
@@ -193,6 +202,7 @@ class CommandProcessor:
         print(f"\n==== EXECUTING COMMAND: '{command_text}' ====\n")
         
         self.command_history.append(command_text)
+        self.last_command_time = time.time()  # Track when the command was executed
         
         command_type = command_text.split(" ")[0]
         command_params = " ".join(command_text.split(" ")[1:])
@@ -220,14 +230,19 @@ class CommandProcessor:
                 pyautogui.moveTo(coords[0], coords[1])
                 pyautogui.click(button="left")
                 pyautogui.write(prompt)
-                pyautogui.press("enter")
+                # Commented out to avoid auto-sending to chatbot
+                # pyautogui.press("enter")
             else:
                 print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
                 return False
             
             print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
-            self.start_ide_monitoring(monitor=self.interface_monitor_region)
+            if completion_callback:
+                self.start_ide_monitoring(monitor=self.interface_monitor_region, completion_callback=completion_callback)
+            else:
+                print("Warning: No completion callback provided for 'type' command")
+                self.start_ide_monitoring(monitor=self.interface_monitor_region)
             return True
         elif command_type == "click":
             # First, ensure the correct window is focused
@@ -277,6 +292,16 @@ class CommandQueue:
         """
         self.activation_word = activation_word.lower()
         self.command_processor = command_processor or CommandProcessor()
+        self.audio_handler = None  # Will be set by FastSpeechHandler
+        
+    def set_audio_handler(self, audio_handler):
+        """
+        Set a reference to the audio handler for callbacks.
+        
+        Args:
+            audio_handler: The audio handler instance.
+        """
+        self.audio_handler = audio_handler
         
     def process_text(self, text):
         """
@@ -316,16 +341,36 @@ class CommandQueue:
         
         return commands
         
-    def execute_commands(self, commands):
+    def is_empty(self):
+        """
+        Check if there are any pending commands.
+        
+        Returns:
+            bool: True if there are no commands, False otherwise.
+        """
+        # The CommandQueue doesn't actually maintain a queue of commands
+        # Instead, we'll look at the command processor's command history
+        if hasattr(self.command_processor, 'command_history') and self.command_processor.command_history:
+            last_command_time = getattr(self.command_processor, 'last_command_time', 0)
+            if last_command_time and (time.time() - last_command_time) < 5:
+                # If a command was processed in the last 5 seconds, consider queue not empty
+                return False
+        return True
+    
+    def execute_commands(self, commands, completion_callback=None):
         """
         Execute a list of commands.
         
         Args:
             commands: A list of command strings to execute.
+            completion_callback: Optional callback to call when all commands have completed execution.
         """
         for command in commands:
             if command:
                 try:
-                    self.command_processor.execute_command(command)
+                    self.command_processor.execute_command(command, completion_callback)
                 except Exception as e:
                     print(f"Error executing command: {str(e)}")
+                    # If there's an error and we have a callback, call it
+                    if completion_callback:
+                        completion_callback()

@@ -15,10 +15,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Import the whisper streaming functionality and command processing
 from mic_streaming import FastSpeechHandler
 from command_processor import CommandProcessor
-# Import the overlay manager
 from overlay_manager import OverlayManager
 
 # Add pynput for global shortcuts
@@ -432,10 +430,7 @@ class EnhancedSpeechHandler(FastSpeechHandler):
         self.stop_callback = stop_callback  # Callback to stop listening completely
     
     # Override hook methods instead of the entire _audio_capture_loop
-    def _before_audio_capture(self):
-        """Hook called before audio capture starts"""
-        print(f"Initializing audio capture...")
-        
+    def _before_audio_capture(self):        
         # Ensure the overlay shows initializing
         if self.overlay_manager:
             self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, "Preparing microphone...")
