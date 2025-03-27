@@ -13,6 +13,15 @@ SuperCode enhances your coding experience by letting you interact with your IDE 
 
 _-> 🌉 Based in SF? [Let's collaborate and shape the future of conversational coding](#want-to-partner)_
 
+## Important notes for running SuperCode
+- Only supports MacOS + English for now
+- Requires Accessibility permissions to capture your screen
+- After installation, SuperCode appears in your menu bar. Launch it anytime with Command + Option + L (`⌘` `⌥` `L`), or click the menu bar icon
+- When running SuperCode for the first time:
+  1. Open your IDE (e.g. Windsurf) on your primary monitor and make sure it's in focus
+  2. Wait for initialization to complete (the "initializing" text in the overlay will disappear)
+  3. Keep your IDE on the primary monitor - multiple monitor support coming soon!
+
 ## Features
 
 ### Core Functionality
@@ -23,7 +32,7 @@ _-> 🌉 Based in SF? [Let's collaborate and shape the future of conversational 
 ### Most Used Features
 **Talk to your IDE with natural language commands**: 
 - "Activate type [text]" - Have the AI type and edit code for you
-- "Activate change [ide]" - Switch to a different [supported IDE](#supported-ai-ides)
+- "Activate change [ide_name]" - Switch to a different [supported IDE](#supported-ai-ides)
 - "Activate learn [element] [name]" - Teach SuperCode about a new UI element
 - "Activate click [element]" - Click a learned UI element
 - "Activate find [text]" - Search for text in the current file

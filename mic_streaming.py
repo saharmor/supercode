@@ -66,19 +66,18 @@ class FastSpeechHandler:
                 if not self.openai_api_key.startswith('sk-') or len(self.openai_api_key) < 20:
                     print("Warning: OPENAI_API_KEY doesn't look valid (should start with 'sk-' and be longer).")
                     print("Transcription may fail if the API key is invalid.")
-        
-        # Register self with monitor_ide_state for callbacks when monitoring completes
-        monitor_ide_state.set_audio_handler(self)
-        
-        try:
-            self.openai_client = openai.Client(api_key=self.openai_api_key)
-        except Exception as e:
-            print(f"Error initializing OpenAI client: {e}")
-            print("Falling back to Google speech recognition.")
-            self.use_openai_api = False
+            try:
+                self.openai_client = openai.Client(api_key=self.openai_api_key)
+            except Exception as e:
+                print(f"Error initializing OpenAI client: {e}")
+                print("Falling back to Google speech recognition.")
+                self.use_openai_api = False
         else:
             print("Using Google speech recognition (OpenAI API not enabled).")
         
+        # Register self with monitor_ide_state for callbacks when monitoring completes
+        monitor_ide_state.set_audio_handler(self)
+
         # State variables
         self.listening_for_commands = False
         self.should_stop = False
@@ -181,8 +180,6 @@ class FastSpeechHandler:
                         last_paused_state = self.paused_for_processing
                         if self.paused_for_processing:
                             print("Pausing audio capture while processing command...")
-                        else:
-                            print("Resuming audio capture...")
                     
                     # Skip processing if we're paused
                     if self.paused_for_processing:
@@ -283,7 +280,6 @@ class FastSpeechHandler:
         
     def resume_audio_processing(self):
         """Callback to resume audio processing after a command completes."""
-        print("Command completed, resuming audio capture...")
         self.paused_for_processing = False
         # Reset overlay status if available
         if hasattr(self, 'overlay_manager') and self.overlay_manager:
