@@ -131,19 +131,42 @@ class OverlayManager:
         except Exception as e:
             print(f"Error hiding overlay: {e}")
     
+    def _truncate_text(self, text, max_words=10):
+        """
+        Truncate text to a maximum number of words
+        
+        Args:
+            text: The text to truncate
+            max_words: Maximum number of words to keep (default: 10)
+            
+        Returns:
+            Truncated text with ellipsis if truncated
+        """
+        if not text:
+            return ""
+            
+        words = text.split()
+        if len(words) <= max_words:
+            return text
+        
+        return " ".join(words[:max_words]) + "..."
+    
     def update_status(self, status, additional_info=""):
         """
         Update the status displayed in the overlay by writing to the status file
         """
         self.current_status = status
-        self.additional_info = additional_info
+        
+        # Truncate additional info to 10 words
+        truncated_info = self._truncate_text(additional_info, max_words=10)
+        self.additional_info = truncated_info
         
         # Write status to file
         try:
             with open(self.status_file.name, 'w') as f:
                 f.write(json.dumps({
                     "status": status,
-                    "info": additional_info,
+                    "info": truncated_info,
                     "interface": self.interface_name
                 }))
         except Exception as e:
