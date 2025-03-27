@@ -32,7 +32,6 @@ class StatusOverlay(QWidget):
     COLOR_BUTTON = QColor(33, 150, 243)  # Blue for buttons
     COLOR_BUTTON_TEXT = QColor(255, 255, 255)  # White text for buttons
     COLOR_INTERFACE = QColor(50, 50, 50)  # Dark gray for interface name
-    COLOR_HER_GLOW = QColor(33, 150, 243)  # Blue glow for "Her"-like animation (matching COLOR_IDLE)
     
     def __init__(self, size=200, status_file=None, message_file=None):
         """
@@ -57,11 +56,6 @@ class StatusOverlay(QWidget):
         self.animation_frame = 0
         self.dragging = False
         
-        # Her-inspired animation variables
-        self.her_particles = []
-        self.particle_count = 8  # Reduced number of particles for cleaner look
-        self.init_particles()
-        
         # Application state
         self.running = False
         self.timer = QTimer()
@@ -73,27 +67,6 @@ class StatusOverlay(QWidget):
         
         # Initialize UI
         self.init_ui()
-    
-    def init_particles(self):
-        """Initialize particles for Her-inspired animation"""
-        self.her_particles = []
-        for i in range(self.particle_count):
-            # Create particle with even spacing for perfect circle
-            angle = (i / self.particle_count) * 2 * math.pi
-            distance = 0  # Start at center
-            speed = 0.05  # Increased speed for smoother transitions
-            size = 4  # Smaller, consistent size
-            
-            self.her_particles.append({
-                'angle': angle,
-                'distance': distance,
-                'target_distance': 0,
-                'speed': speed,
-                'size': size,
-                'opacity': 0,
-                'target_opacity': 0,
-                'base_angle': angle  # Store the base angle for circular movement
-            })
     
     def init_ui(self):
         """Initialize the user interface"""
@@ -165,30 +138,6 @@ class StatusOverlay(QWidget):
             return
             
         self.animation_frame += 1
-        
-        # Update Her-inspired animation particles
-        if self.current_status == OverlayManager.STATUS_RECORDING:
-            # When recording, set consistent distances for a perfect circle
-            for i, particle in enumerate(self.her_particles):
-                # Activate for animation - smaller radius (20px)
-                particle['target_distance'] = 20
-                particle['target_opacity'] = 180  # Higher opacity for better visibility
-        else:
-            # When not recording, reset particles back to center
-            for particle in self.her_particles:
-                particle['target_distance'] = 0
-                particle['target_opacity'] = 0
-        
-        # Move particles toward their targets
-        for particle in self.her_particles:
-            # Smoothly move toward target distance
-            diff = particle['target_distance'] - particle['distance']
-            particle['distance'] += diff * particle['speed']
-            
-            # Smoothly change opacity
-            opacity_diff = particle['target_opacity'] - particle['opacity']
-            particle['opacity'] += opacity_diff * particle['speed'] * 2
-        
         self.update()
     
     def paintEvent(self, event):
@@ -257,34 +206,6 @@ class StatusOverlay(QWidget):
             dot_x = padding + 20 + (14 - status_dot_size) / 2
             dot_y = padding + 45 + (14 - status_dot_size) / 2
             painter.drawEllipse(int(dot_x), int(dot_y), int(status_dot_size), int(status_dot_size))
-        
-        # Draw Her-inspired animation for the listening state
-        if self.current_status == OverlayManager.STATUS_RECORDING:
-            # Draw beautiful particles radiating outward
-            # Calculate center of overlay for the particles
-            center_x = self.width() / 2
-            center_y = padding + 85
-            
-            # Draw particles
-            for particle in self.her_particles:
-                if particle['opacity'] > 5:  # Only draw visible particles
-                    # Calculate particle position based on angle and distance
-                    # Smooth orbital movement around the perfect circle
-                    orbit_speed = 0.008  # Slower orbit for smoother appearance
-                    x = center_x + math.cos(particle['base_angle'] + (self.animation_frame * orbit_speed)) * particle['distance']
-                    y = center_y + math.sin(particle['base_angle'] + (self.animation_frame * orbit_speed)) * particle['distance']
-                    
-                    # Create gradient colors for particles
-                    particle_color = QColor(self.COLOR_HER_GLOW)
-                    particle_color.setAlpha(int(particle['opacity']))
-                    
-                    # Draw the particle
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(particle_color)
-                    # Subtler size pulsing for smoother appearance
-                    particle_size = particle['size'] * (0.9 + 0.1 * math.sin(self.animation_frame * 0.05))
-                    painter.drawEllipse(int(x - particle_size/2), int(y - particle_size/2), 
-                                       int(particle_size), int(particle_size))
         
         # Draw status text
         status_color = self.COLOR_TEXT
