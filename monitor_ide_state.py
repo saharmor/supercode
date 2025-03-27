@@ -35,11 +35,10 @@ def signal_monitoring_complete():
         print("No audio handler available or missing resume_audio_processing method")
 import subprocess
 import platform
-from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
 from utils import play_beep
-from computer_use_utils import capture_screenshot
+from computer_use_utils import send_screenshot_to_gemini
 
 def initialize_gemini_client():
     """
@@ -113,55 +112,47 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
             if not success:
                 return False, "Failed to initialize Gemini client"
         
-        # Load and prepare the image
-        with Image.open(image_path) as img:
-            # Ensure image is in RGB format for compatibility
-            if img.mode != "RGB":
-                img = img.convert("RGB")
+        # Use the common utility function to send the image to Gemini
+        success, response = send_screenshot_to_gemini(
+            prompt=coding_generation_analysis_prompt,
+            temp_file=image_path,  # Use the provided image path
+            model_name='gemini-2.0-flash-lite',
+            verbose=verbose
+        )
+        
+        if not success:
+            return False, f"Error: {response}"
+        
+        response_text = response.text.strip().lower()
             
-            # Get Gemini model
-            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+        # Extract JSON from response text
+        try:
+            # Look for JSON content between triple backticks if present
+            if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+                json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+            else:
+                json_content = response_text
             
-            # Get response from Gemini with timing
-            start_time = time.time()
-            response = model.generate_content([coding_generation_analysis_prompt, img])
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            if verbose:
-                print(f"Gemini analysis took {elapsed_time:.2f} seconds")
+            gemini_response = json.loads(json_content)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON response: {e}")
+            # Create a default response
+            gemini_response = {"interface_state": "still_working", "reasoning": "Failed to parse response"}
+        
             
-            response_text = response.text.strip().lower()
-            if verbose:
-                print(f"Gemini response: {response_text}")
+        state = gemini_response["interface_state"].lower()
+        
+        user_action_needed = state == "user_input_required"
+        done = state == "done"
+        
+        # Validate response matches expected format
+        if state not in ["user_input_required", "still_working", "done"]:
+            print(f"Warning: Unexpected state from Gemini: {state}")
+            state = "still_working"  # Default to still working if response is unclear
             
-            # Extract JSON from response text
-            try:
-                # Look for JSON content between triple backticks if present
-                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                    json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-                elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                    json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
-                else:
-                    json_content = response_text
-                
-                gemini_response = json.loads(json_content)
-            except json.JSONDecodeError as e:
-                print(f"Error parsing JSON response: {e}")
-                # Create a default response
-                gemini_response = {"interface_state": "still_working", "reasoning": "Failed to parse response"}
-            
-                
-            state = gemini_response["interface_state"].lower()
-            
-            user_action_needed = state == "user_input_required"
-            done = state == "done"
-            
-            # Validate response matches expected format
-            if state not in ["user_input_required", "still_working", "done"]:
-                print(f"Warning: Unexpected state from Gemini: {state}")
-                state = "still_working"  # Default to still working if response is unclear
-                
-            return user_action_needed or done, state
+        return user_action_needed or done, state
             
     except Exception as e:
         print(f"Error analyzing {interface_name} state: {e}")
@@ -209,7 +200,7 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
         
         while True:
             try:
-                # Take a screenshot
+                # Generate a filename for this screenshot
                 screenshot_count += 1
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 filename = f"{file_prefix}{timestamp}_screenshot.png"
@@ -218,13 +209,47 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 # Clean up old screenshots, keeping only the newest 10
                 cleanup_old_files(output_dir, f"{file_prefix}*_screenshot.png", max_files=10)
                 
-                # Use the unified screenshot function with a temporary file for analysis
-                image = capture_screenshot(monitor=monitor, temp_file=path)
                 
+                # Use the unified screenshot function and common send_screenshot_to_gemini utility
                 print(f"\rChecking coding generation state ({screenshot_count})...", end="")
                 
-                # Analyze the screenshot to determine coding generation state
-                _, state = analyze_coding_generation_state(interface_state_prompt, path, False, interface_name=interface_name, verbose=True)  # No need to reinitialize
+                # Use the common utility function to send the image directly to Gemini
+                success, response = send_screenshot_to_gemini(
+                    prompt=interface_state_prompt,
+                    monitor=monitor,
+                    temp_file=path,
+                    model_name='gemini-2.0-flash-lite',
+                    verbose=True
+                )
+                
+                if not success:
+                    print(f"\nError analyzing IDE state: {response}")
+                    time.sleep(interval)
+                    continue
+                
+                # Process the response to determine IDE state
+                try:
+                    # Extract JSON from response text
+                    response_text = response.text.strip().lower()
+                    
+                    # Look for JSON content between triple backticks if present
+                    if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                        json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+                        json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+                    else:
+                        json_content = response_text
+                    
+                    gemini_response = json.loads(json_content)
+                    state = gemini_response["interface_state"].lower()
+                    
+                    # Validate response matches expected format
+                    if state not in ["user_input_required", "still_working", "done"]:
+                        print(f"\nWarning: Unexpected state from Gemini: {state}")
+                        state = "still_working"  # Default to still working if response is unclear
+                except Exception as e:
+                    print(f"\nError parsing Gemini response: {e}")
+                    state = "still_working"  # Default to still working if parsing fails
                 
                 if state != last_state:
                     print(f"\nCoding generation state: {state}")

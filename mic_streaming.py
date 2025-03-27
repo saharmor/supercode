@@ -319,7 +319,6 @@ class FastSpeechHandler:
             # Only send if file is not too small (likely noise) or too large
             if 10 * 1024 <= file_size <= 25 * 1024 * 1024:  # 10KB to 25MB
                 # Queue for transcription - this happens very quickly
-                print(f"Audio saved to: {audio_filename}")
                 self.transcription_queue.put(audio_filename)
             else:
                 if file_size < 10 * 1024:

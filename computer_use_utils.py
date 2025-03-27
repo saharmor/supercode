@@ -384,3 +384,162 @@ def get_active_window_monitor():
         # Default fallback dimensions
         return {"left": 0, "top": 0, "width": 1920, "height": 1080}
 
+
+def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width=1024, model_name='gemini-2.0-flash-lite', verbose=False):
+    """
+    Take a screenshot, send it to Gemini with a prompt, and return the response.
+    Common utility for both IDE detection and state analysis.
+    
+    Args:
+        prompt (str): The prompt to send to Gemini along with the screenshot
+        monitor (dict, optional): Monitor region to capture. If None, captures current window.
+        temp_file (str, optional): Path to save screenshot temporarily. If None, creates a temp file.
+        resize_width (int, optional): Width to resize the screenshot to.
+        model_name (str, optional): Gemini model to use.
+        verbose (bool, optional): Whether to print detailed logs.
+        
+    Returns:
+        tuple: (bool, response_obj) - Success flag and response object from Gemini
+               or (False, error_str) if an error occurred
+    """
+    try:
+        # Import Google Gemini AI library
+        import google.generativeai as genai
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Check for API key
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            error_msg = "Error: GEMINI_API_KEY or GOOGLE_API_KEY environment variable not found."
+            print(error_msg)
+            return False, error_msg
+        
+        # Configure the Gemini API
+        genai.configure(api_key=api_key)
+        
+        # Create a temp file if none provided
+        should_cleanup_temp = False
+        if not temp_file:
+            temp_file = os.path.join(os.getcwd(), f"temp_gemini_query_{int(time.time())}.png")
+            should_cleanup_temp = True
+        
+        # Capture screenshot
+        screenshot = capture_screenshot(monitor=monitor, resize_width=resize_width, temp_file=temp_file)
+        if not screenshot:
+            error_msg = "Error: Failed to capture screenshot"
+            print(error_msg)
+            return False, error_msg
+        
+        try:
+            # Get Gemini model
+            model = genai.GenerativeModel(model_name)
+            
+            # Send to Gemini with timing
+            start_time = time.time()
+            
+            # Different handling depending on whether screenshot is a PIL Image or a path
+            if isinstance(screenshot, str) or temp_file:  # If temp_file exists or screenshot is a path
+                file_path = screenshot if isinstance(screenshot, str) else temp_file
+                # Load and prepare the image
+                with Image.open(file_path) as img:
+                    # Ensure image is in RGB format for compatibility
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                    # Generate content with image
+                    response = model.generate_content([prompt, img])
+            else:  # If screenshot is a PIL Image
+                # Ensure image is in RGB format
+                if screenshot.mode != "RGB":
+                    screenshot = screenshot.convert("RGB")
+                # Generate content with image directly
+                response = model.generate_content([prompt, screenshot])
+            
+            # Log timing if verbose
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            if verbose:
+                print(f"Gemini analysis took {elapsed_time:.2f} seconds")
+                print(f"Gemini response: {response.text.strip()}")
+            
+            # Cleanup temp file if we created it
+            if should_cleanup_temp and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception as e:
+                    print(f"Warning: Could not remove temp file {temp_file}: {e}")
+            
+            return True, response
+            
+        except Exception as e:
+            error_msg = f"Error communicating with Gemini: {str(e)}"
+            print(error_msg)
+            
+            # Cleanup temp file if we created it
+            if should_cleanup_temp and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+                    
+            return False, error_msg
+            
+    except Exception as e:
+        error_msg = f"Error in send_screenshot_to_gemini: {str(e)}"
+        print(error_msg)
+        return False, error_msg
+
+def detect_ide_with_gemini(possible_ides: list[str]) -> str:
+    """
+    Use Gemini to detect which IDE is currently open and in focus.
+    
+    Args:
+        possible_ides: List of possible IDE names to check for
+        
+    Returns:
+        str: The detected IDE name, or None if no matching IDE is detected
+    """
+    # Prepare the prompt for Gemini
+    detection_prompt = """
+Help me know what AI IDE is being used based on the given screenshot. It can be one of three options: Cursor, Windsurf, or Lovable. I'll provide you with the visual description of those three and you will return the name. If it's none of these options, you return None.
+
+Visual description:
+Cursor Prompt: "This interface looks like VS Code. Does the right panel show an integrated AI chat/diff view with 'Agent', 'Accept all' / 'Reject all' buttons, and does the bottom status bar mention 'Cursor Tab'?"
+
+Windsurf Prompt: "This interface looks like VS Code. Does the right panel feature an AI assistant explicitly named or titled 'Cascade' (e.g., 'Write with Cascade'), and does the bottom status bar mention 'Windsurf'?"
+
+Lovable Prompt: "This interface is a web browser, not a standalone code editor. Does the URL contain 'lovable.dev', and is there a left-hand panel distinctly labeled 'Lovable' (often next to a heart icon) controlling a web page preview on the right?"
+
+Return ONLY the IDE name (Cursor, Windsurf, Lovable) or "None" if no match.
+"""
+    
+    # Use the new common function to get Gemini's response
+    success, response = send_screenshot_to_gemini(
+        prompt=detection_prompt,
+        monitor='current',
+        resize_width=1024
+    )
+    
+    if not success:
+        print(f"Error in IDE detection: {response}")
+        return None
+    
+    # Extract the response text
+    response_text = response.text.strip()
+    
+    # Process the response
+    if response_text.lower() in ['cursor', 'windsurf', 'lovable']:
+        detected_ide = response_text.lower()
+        print(f"Gemini detected IDE: {detected_ide}")
+        
+        # Verify the detected IDE is in our list of possible IDEs
+        if detected_ide in [ide.lower() for ide in possible_ides]:
+            return detected_ide
+        else:
+            print(f"Detected IDE {detected_ide} is not in the list of possible IDEs: {possible_ides}")
+            return None
+    else:
+        print("No matching IDE detected")
+        return None
