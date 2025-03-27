@@ -164,9 +164,27 @@ class StatusOverlay(QWidget):
         interface_font.setWeight(QFont.DemiBold)
         painter.setFont(interface_font)
         
-        # Draw interface name centered at the top with a slight border
-        interface_rect = QRectF(padding + 5, padding + 5, width - 10, 25)
-        painter.drawText(interface_rect, Qt.AlignCenter, self.interface_name)
+        # Leave space for the close button
+        close_button_width = 30
+        interface_width = width - close_button_width - 10
+        
+        # Truncate interface name if it's too long
+        fm = painter.fontMetrics()
+        truncated_interface_name = self.interface_name
+        if fm.horizontalAdvance(self.interface_name) > interface_width:
+            # Find the maximum characters that can fit
+            available_width = interface_width - fm.horizontalAdvance("...")
+            truncated_text = ""
+            for char in self.interface_name:
+                if fm.horizontalAdvance(truncated_text + char) <= available_width:
+                    truncated_text += char
+                else:
+                    break
+            truncated_interface_name = truncated_text + "..."
+        
+        # Draw interface name centered at the top with a slight border (leaving space for close button)
+        interface_rect = QRectF(padding + 5, padding + 5, interface_width, 25)
+        painter.drawText(interface_rect, Qt.AlignCenter, truncated_interface_name)
         
         # Draw a light separator line
         painter.setPen(QColor(200, 200, 200))
@@ -207,21 +225,45 @@ class StatusOverlay(QWidget):
             dot_y = padding + 45 + (14 - status_dot_size) / 2
             painter.drawEllipse(int(dot_x), int(dot_y), int(status_dot_size), int(status_dot_size))
         
-        # Draw status text
-        status_color = self.COLOR_TEXT
+        # Draw Her-inspired animation for the listening state
         if self.current_status == OverlayManager.STATUS_RECORDING:
-            status_color = self.COLOR_RECORDING  # Now green instead of red
-        elif self.current_status == OverlayManager.STATUS_IDLE:
-            status_color = self.COLOR_IDLE
-        elif self.current_status == OverlayManager.STATUS_EXECUTING:
-            status_color = self.COLOR_STATUS
+            # Draw beautiful particles radiating outward
+            # Calculate center of overlay for the particles
+            center_x = self.width() / 2
+            center_y = padding + 85
+            
+            # Draw particles
+            for particle in self.her_particles:
+                if particle['opacity'] > 5:  # Only draw visible particles
+                    # Calculate particle position based on angle and distance
+                    # Smooth orbital movement around the perfect circle
+                    orbit_speed = 0.008  # Slower orbit for smoother appearance
+                    x = center_x + math.cos(particle['base_angle'] + (self.animation_frame * orbit_speed)) * particle['distance']
+                    y = center_y + math.sin(particle['base_angle'] + (self.animation_frame * orbit_speed)) * particle['distance']
+                    
+                    # Create gradient colors for particles
+                    particle_color = QColor(self.COLOR_HER_GLOW)
+                    particle_color.setAlpha(int(particle['opacity']))
+                    
+                    # Draw the particle
+                    painter.setPen(Qt.NoPen)
+                    painter.setBrush(particle_color)
+                    # Subtler size pulsing for smoother appearance
+                    particle_size = particle['size'] * (0.9 + 0.1 * math.sin(self.animation_frame * 0.05))
+                    painter.drawEllipse(int(x - particle_size/2), int(y - particle_size/2), 
+                                       int(particle_size), int(particle_size))
+        
+        # Set status text color - beautiful grey for most states, green only for executing
+        status_color = self.COLOR_TEXT  # Default beautiful grey
+        if self.current_status == OverlayManager.STATUS_EXECUTING or self.current_status == "Executing command":
+            status_color = self.COLOR_STATUS  # Green for executing commands
             
         painter.setPen(status_color)
         status_font = QFont("SF Pro Display", 14)  # Use a more modern font
         status_font.setWeight(QFont.DemiBold)
         painter.setFont(status_font)
         
-        # Center the status text - moved down to accommodate interface name
+        # Draw status text
         painter.drawText(QRectF(padding, padding + 35, width, 35), Qt.AlignCenter, self.current_status)
         
         # Draw additional info (command)
