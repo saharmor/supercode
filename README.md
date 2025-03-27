@@ -1,16 +1,17 @@
-# SuperCode ✨
-> The conversational assistant for vibe coders
-
+<div align="center">
+<h1 align="center">SuperCode ✨</h1>
+<blockquote align="center">The conversational assistant for vibe coders</blockquote>
+<br>
 <p align="center">
 <a href="#features">Features</a> | <a href="#supported-ai-ides">Supported AI IDEs</a> | <a href="#installation">Installation</a> | <a href="#current-limitations">Current Limitations</a>
 </p>
+</div>
 
 
 SuperCode enhances your coding experience by letting you interact with your IDE using voice commands. Vibe coding how it should be.
 
-(currently Mac only, more OS coming soon!)
 
-🌉 Based in SF? [Let's collaborate and shape the future of conversational coding](#partnering)
+_-> 🌉 Based in SF? [Let's collaborate and shape the future of conversational coding](#partnering)_
 
 ## Features
 
