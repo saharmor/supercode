@@ -11,7 +11,7 @@
 SuperCode enhances your coding experience by letting you interact with your IDE using voice commands. Vibe coding how it should be.
 
 
-_-> 🌉 Based in SF? [Let's collaborate and shape the future of conversational coding](#partnering)_
+_-> 🌉 Based in SF? [Let's collaborate and shape the future of conversational coding](#want-to-partner)_
 
 ## Features
 
@@ -58,9 +58,9 @@ The script will:
 
 
 ## API Keys Needed
-- Anthropic API key for Claude Computer Use - [see guide for getting your key](https://www.youtube.com/watch?v=Vp4we-ged4w)
-- OpenAI API key for Whisper transcription, optional, otherwise uses Google free ASR - [see guide for getting your key](https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key)
-- Google Gemini API key for screenshots and image analysis - [see guide for getting your key](https://github.com/saharmor/gemini-multimodal-playground?tab=readme-ov-file#getting-your-gemini-api-key)
+- Anthropic API key for Claude Computer Use _[see guide for getting your key](https://www.youtube.com/watch?v=Vp4we-ged4w)_
+- OpenAI API key for Whisper transcription, optional, otherwise uses Google free ASR _[see guide for getting your key](https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key)_
+- Google Gemini API key for screenshots and image analysis _[see guide for getting your key](https://github.com/saharmor/gemini-multimodal-playground?tab=readme-ov-file#getting-your-gemini-api-key)_
 
 ## Configuration
 SuperCode uses a `.env` file for configuration. An example template (`.example.env`) is provided with the repository. The installation script will automatically create this file for you, but you can also manually copy and edit it:
