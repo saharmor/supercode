@@ -303,19 +303,20 @@ class FastSpeechHandler:
                 except queue.Empty:
                     continue
                 
-                # Check if audio is just random noise
-                with wave.open(audio_file, 'rb') as wf:
-                    # Read audio data
-                    audio_data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
-                    # Calculate RMS energy
-                    rms = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
-                    # Check if below noise threshold
-                    if rms < self.energy_threshold * 0.8:  # Use slightly lower threshold
-                        print("Audio appears to be random noise, skipping transcription")
-                        if os.path.exists(audio_file):
-                            os.unlink(audio_file)
-                        self.transcription_queue.task_done()
-                        continue
+                # TODO fix or remove
+                # # Check if audio is just random noise
+                # with wave.open(audio_file, 'rb') as wf:
+                #     # Read audio data
+                #     audio_data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+                #     # Calculate RMS energy
+                #     rms = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
+                #     # Check if below noise threshold
+                #     if rms < self.energy_threshold * 0.8:  # Use slightly lower threshold
+                #         print("Audio appears to be random noise, skipping transcription")
+                #         if os.path.exists(audio_file):
+                #             os.unlink(audio_file)
+                #         self.transcription_queue.task_donesco()
+                #         continue
                 
                 print("Transcribing audio...")
                 start_time = time.time()

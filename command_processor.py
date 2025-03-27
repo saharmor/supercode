@@ -231,7 +231,7 @@ class CommandProcessor:
             return True
         elif command_type == "click":
             # First, ensure the correct window is focused
-            focus_success = self.focus_ide_window()
+            focus_success = self.focus_ide_window(self.current_project_name)
             if not focus_success:
                 print(f"Warning: Could not focus the {self.current_interface} window")
                 # Continue anyway, but it might not click in the right place
