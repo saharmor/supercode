@@ -10,3 +10,4 @@ pillow
 PyAutoGUI
 google-genai>=1.7.0
 pyobjc>=9.0.1
+screeninfo>=0.8.1
