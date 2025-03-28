@@ -121,7 +121,7 @@ class CommandProcessor:
         return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
         
         
-    def start_ide_monitoring(self, monitor, completion_callback=None):
+    def start_ide_monitoring(self, monitor, completion_callback=None, max_still_working_checks=60, max_check_interval=10.0, min_check_interval=2.0):
         """
         Start a background thread that monitors the IDE state until it's done.
         Uses the monitor_ide_state function from monitor_ide_state.py.
@@ -129,6 +129,9 @@ class CommandProcessor:
         Args:
             monitor: Region to monitor for screenshots
             completion_callback: Optional callback function to call when monitoring completes
+            max_still_working_checks: Maximum number of consecutive "still_working" states before stopping (0 = unlimited)
+            max_check_interval: Maximum interval between checks in seconds
+            min_check_interval: Minimum interval between checks in seconds
         """
         try:
             # Import the function here to avoid circular imports
@@ -143,7 +146,16 @@ class CommandProcessor:
             interface_state_prompt = self.interface_config[self.current_interface]['interface_state_prompt']
             self.interface_monitor_thread = threading.Thread(
                 target=monitor_coding_generation_state,
-                args=(interface_state_prompt, monitor, 2.0, "screenshots", self.current_interface, completion_callback)
+                args=(interface_state_prompt, monitor),
+                kwargs={
+                    'interval': 2.0,
+                    'output_dir': "screenshots",
+                    'interface_name': self.current_interface,
+                    'completion_callback': completion_callback,
+                    'max_still_working_checks': max_still_working_checks,
+                    'max_check_interval': max_check_interval,
+                    'min_check_interval': min_check_interval
+                }
             )
             self.interface_monitor_thread.daemon = True
             self.interface_monitor_thread.start()

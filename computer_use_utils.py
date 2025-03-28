@@ -6,10 +6,10 @@ import pyautogui
 import platform
 import subprocess
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from dotenv import load_dotenv
 from PIL import Image
-from screeninfo import get_monitors
+from screeninfo import get_monitors as screeninfo_get_monitors
 
 import google.generativeai as genai
 
@@ -20,6 +20,37 @@ class ScalingSource(Enum):
     API = 1      # Coordinates from API (need to be scaled to real screen)
     SCREEN = 2   # Coordinates from screen (need to be scaled to API format)
 
+# Cache the monitors information
+_cached_monitors = None
+_last_monitor_fetch_time = 0
+_MONITOR_CACHE_DURATION = 60  # Cache duration in seconds
+
+def get_monitors() -> List:
+    """
+    Get monitor information with caching to avoid repeated slow calls.
+    
+    Returns:
+        List of monitor objects
+    """
+    global _cached_monitors, _last_monitor_fetch_time
+    
+    current_time = time.time()
+    
+    # Check if we have a valid cache
+    if _cached_monitors is not None and (current_time - _last_monitor_fetch_time) < _MONITOR_CACHE_DURATION:
+        return _cached_monitors
+    
+    # Cache miss or expired, fetch monitors
+    fetch_start = time.time()
+    
+    try:
+        _cached_monitors = screeninfo_get_monitors()
+        _last_monitor_fetch_time = current_time
+        
+        return _cached_monitors
+    except Exception as e:
+        # Return empty list on error
+        return []
 
 def capture_screenshot(monitor=None, resize_width=None, return_base64=False, temp_file=None):
     """
@@ -33,46 +64,30 @@ def capture_screenshot(monitor=None, resize_width=None, return_base64=False, tem
     Returns:
         Union[Image.Image, str]: Either a PIL Image object or a base64-encoded string.
     """
+    total_start_time = time.time()
+    
     try:
-        # Always try to use screencapture on macOS if possible
-        use_screencapture = platform.system() == "Darwin"
+        # Always use pyautogui.screenshot() for all platforms
+        region = None
+        if monitor == 'current':
+            m_start_time = time.time()
+            m = get_active_window_monitor()
+            
+            region = (m['left'], m['top'], m['width'], m['height'])
+        elif isinstance(monitor, dict):
+            region = (monitor['left'], monitor['top'], monitor['width'], monitor['height'])
         
-        if use_screencapture:
-            # Create temp file if not provided
-            if temp_file is None:
-                temp_file = os.path.join(os.getcwd(), f"temp_screenshot_{int(time.time())}.png")
-                should_cleanup = True
-            else:
-                should_cleanup = False
-                
-            # Determine capture region
-            region_args = []
-            if monitor == 'current':
-                m = get_active_window_monitor()
-                region_args = ["-R", f"{m['left']},{m['top']},{m['width']},{m['height']}"]
-            elif isinstance(monitor, dict):
-                region_args = ["-R", f"{monitor['left']},{monitor['top']},{monitor['width']},{monitor['height']}"]
-                
-            # Capture screenshot
-            subprocess.run(["screencapture", "-x"] + region_args + [temp_file], check=True)
-            screenshot = Image.open(temp_file)
-            
-            # Clean up temp file if we created it
-            if should_cleanup or return_base64:
-                os.remove(temp_file)
-        else:
-            # Fall back to pyautogui on other platforms
-            region = None
-            if monitor == 'current':
-                m = get_active_window_monitor()
-                region = (m['left'], m['top'], m['width'], m['height'])
-            elif isinstance(monitor, dict):
-                region = (monitor['left'], monitor['top'], monitor['width'], monitor['height'])
-            
-            screenshot = pyautogui.screenshot(region=region)
+        pyautogui_start_time = time.time()
+        screenshot = pyautogui.screenshot(region=region)
+
+        # Save to temp file if provided
+        if temp_file:
+            save_start_time = time.time()
+            screenshot.save(temp_file, format="PNG")
 
         # Resize
         if resize_width:
+            resize_start_time = time.time()
             ratio = screenshot.height / screenshot.width
             resize_height = int(resize_width * ratio)
             screenshot = screenshot.resize((resize_width, resize_height))
@@ -80,11 +95,12 @@ def capture_screenshot(monitor=None, resize_width=None, return_base64=False, tem
         if return_base64:
             buffer = io.BytesIO()
             screenshot.save(buffer, format="PNG", optimize=True)
-            return base64.b64encode(buffer.getvalue()).decode()
+            base64_result = base64.b64encode(buffer.getvalue()).decode()
+            
+            return base64_result
         else:
             return screenshot
     except Exception as e:
-        print(f"Error capturing screenshot: {e}")
         return None
     
 
@@ -203,7 +219,6 @@ def get_coordinates_for_prompt(prompt: str, monitor) -> Optional[Tuple[int, int]
     
     if coordinates:
         api_x, api_y = coordinates
-        print(f"Claude coordinates: ({api_x}, {api_y})")
         
         # Scale the coordinates to match the actual screen dimensions
         scaled_x, scaled_y = claude.scale_coordinates(ScalingSource.API, api_x, api_y)        
@@ -388,22 +403,30 @@ def get_active_window_monitor():
     Returns:
         dict: The monitor's bounding box with keys 'left', 'top', 'width', 'height'.
     """
+    start_time = time.time()
+    
     try:
-        time.sleep(3)
+        # Get current mouse position (removed 3-second sleep)
+        position_start = time.time()
         center_x, center_y = pyautogui.position()
 
+        # Get monitor information
+        monitors_start = time.time()
         monitors = get_monitors()
+        
+        # Find which monitor contains the cursor
         for m in monitors:
             if (m.x <= center_x <= m.x + m.width and
                 m.y <= center_y <= m.y + m.height):
-                return {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
+                result = {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
+                return result
 
         # Fallback: return the first monitor if none match
         primary = monitors[0]
-        return {"left": primary.x, "top": primary.y, "width": primary.width, "height": primary.height}
+        result = {"left": primary.x, "top": primary.y, "width": primary.width, "height": primary.height}
+        return result
 
     except Exception as e:
-        print(f"Error getting active window monitor: {e}")
         # Default fallback dimensions
         return {"left": 0, "top": 0, "width": 1920, "height": 1080}
 
@@ -425,11 +448,15 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
         tuple: (bool, response_obj) - Success flag and response object from Gemini
                or (False, error_str) if an error occurred
     """
+    function_start = time.time()
+    log_time = time.strftime('%H:%M:%S')
+    
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
+        # Check for API key
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        
         if not api_key:
-            error_msg = "Error: GEMINI_API_KEY environment variable not found."
-            print(error_msg)
+            error_msg = "Error: GEMINI_API_KEY or GOOGLE_API_KEY environment variable not found."
             return False, error_msg
         
         # Configure the Gemini API
@@ -443,54 +470,57 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
         
         # Capture screenshot
         screenshot = capture_screenshot(monitor=monitor, resize_width=resize_width, temp_file=temp_file)
+        
         if not screenshot:
             error_msg = "Error: Failed to capture screenshot"
-            print(error_msg)
             return False, error_msg
         
         try:
             # Get Gemini model
             model = genai.GenerativeModel(model_name)
             
-            # Send to Gemini with timing
-            start_time = time.time()
-            
             # Different handling depending on whether screenshot is a PIL Image or a path
             if isinstance(screenshot, str) or temp_file:  # If temp_file exists or screenshot is a path
                 file_path = screenshot if isinstance(screenshot, str) else temp_file
+                
                 # Load and prepare the image
                 with Image.open(file_path) as img:
+                    
                     # Ensure image is in RGB format for compatibility
                     if img.mode != "RGB":
+                        convert_start = time.time()
                         img = img.convert("RGB")
+                    
                     # Generate content with image
+                    gen_start = time.time()
                     response = model.generate_content([prompt, img])
+                    gen_time = time.time() - gen_start
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Gemini API call completed in {gen_time:.2f}s")
             else:  # If screenshot is a PIL Image
+                
                 # Ensure image is in RGB format
                 if screenshot.mode != "RGB":
                     screenshot = screenshot.convert("RGB")
+                
                 # Generate content with image directly
+                gen_start = time.time()
                 response = model.generate_content([prompt, screenshot])
-            
-            # Log timing if verbose
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            if verbose:
-                print(f"Gemini analysis took {elapsed_time:.2f} seconds")
-                print(f"Gemini response: {response.text.strip()}")
+                gen_time = time.time() - gen_start
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Gemini API call completed in {gen_time:.2f}s")
             
             # Cleanup temp file if we created it
             if should_cleanup_temp and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                except Exception as e:
-                    print(f"Warning: Could not remove temp file {temp_file}: {e}")
+                except Exception:
+                    pass
             
             return True, response
             
         except Exception as e:
             error_msg = f"Error communicating with Gemini: {str(e)}"
-            print(error_msg)
             
             # Cleanup temp file if we created it
             if should_cleanup_temp and os.path.exists(temp_file):
@@ -503,7 +533,6 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
             
     except Exception as e:
         error_msg = f"Error in send_screenshot_to_gemini: {str(e)}"
-        print(error_msg)
         return False, error_msg
 
 def detect_ide_with_gemini(possible_ides: list[str]) -> str:
@@ -547,7 +576,6 @@ Return ONLY the IDE name (Cursor, Windsurf, Lovable) or "None" if no match.
     # Process the response
     if response_text.lower() in ['cursor', 'windsurf', 'lovable']:
         detected_ide = response_text.lower()
-        print(f"Gemini detected IDE: {detected_ide}")
         
         # Verify the detected IDE is in our list of possible IDEs
         if detected_ide in [ide.lower() for ide in possible_ides]:
