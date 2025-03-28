@@ -5,7 +5,7 @@ Monitor IDE State - A utility for monitoring the state of coding generation AI a
 import os
 import json
 import time
-from utils import cleanup_old_files
+from utils import cleanup_old_files, extract_json_content
 
 import subprocess
 import platform
@@ -129,15 +129,7 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
             
         # Extract JSON from response text
         try:
-            # Look for JSON content between triple backticks if present
-            if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-            elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
-            else:
-                json_content = response_text
-            
-            gemini_response = json.loads(json_content)
+            gemini_response = json.loads(extract_json_content(response_text))
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON response: {e}")
             # Create a default response
@@ -256,13 +248,7 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     # Extract JSON from response text
                     response_text = response.text.strip().lower()
                     
-                    # Look for JSON content between triple backticks if present
-                    if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                        json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-                    elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                        json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
-                    else:
-                        json_content = response_text
+                    json_content = extract_json_content(response_text)
                     
                     log_time = time.strftime('%H:%M:%S')
                     print(f"[{log_time}] JSON content: {json_content}")

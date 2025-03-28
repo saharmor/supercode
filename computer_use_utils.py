@@ -1,3 +1,4 @@
+import json
 import os
 import base64
 import io
@@ -12,6 +13,8 @@ from PIL import Image
 from screeninfo import get_monitors as screeninfo_get_monitors
 
 import google.generativeai as genai
+
+from utils import extract_json_content
 
 load_dotenv()
 
@@ -463,7 +466,10 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
             should_cleanup_temp = True
         
         # Capture screenshot
+        start_time = time.time()
         screenshot = capture_screenshot(monitor=monitor, resize_width=resize_width, temp_file=temp_file)
+        capture_time = time.time() - start_time
+        print(f"Screenshot captured in {capture_time:.2f}s")
         
         if not screenshot:
             error_msg = "Error: Failed to capture screenshot"
@@ -539,17 +545,37 @@ def detect_ide_with_gemini(possible_ides: list[str]) -> str:
         str: The detected IDE name, or None if no matching IDE is detected
     """
     # Prepare the prompt for Gemini
-    detection_prompt = """
-Help me know what AI IDE is being used based on the given screenshot. It can be one of three options: Cursor, Windsurf, or Lovable. I'll provide you with the visual description of those three and you will return the name. If it's none of these options, you return None.
+    detection_prompt = """You are analyzing a screenshot to determine which AI coding IDE is being used. Analyze the interface and return a JSON response indicating which IDE is detected based on these criteria:
 
-Visual description:
-Cursor Prompt: "This interface looks like VS Code. Does the right panel show an integrated AI chat/diff view with 'Agent', 'Accept all' / 'Reject all' buttons, and does the bottom status bar mention 'Cursor Tab'?"
+For Cursor:
+- The active application in the Apple menu bar is 'Cursor'
+- Right panel shows integrated AI chat/diff view with 'Agent'
+- Has 'Accept all' / 'Reject all' buttons
+- Bottom status bar mentions 'Cursor Tab'
+- Interface resembles VS Code
 
-Windsurf Prompt: "This interface looks like VS Code. Does the right panel feature an AI assistant explicitly named or titled 'Cascade' (e.g., 'Write with Cascade'), and does the bottom status bar mention 'Windsurf'?"
+For Windsurf:
+- The active application in the Apple menu bar is 'Windsurf'
+- Right panel features AI assistant titled 'Cascade' or 'Write with Cascade'
+- Bottom status bar mentions 'Windsurf'
+- Interface resembles VS Code
 
-Lovable Prompt: "This interface is a web browser, not a standalone code editor. Does the URL contain 'lovable.dev', and is there a left-hand panel distinctly labeled 'Lovable' (often next to a heart icon) controlling a web page preview on the right?"
+For Lovable:
+- Interface is a web browser (not standalone editor)
+- URL contains 'lovable.dev'
+- Left panel labeled 'Lovable' with heart icon
+- Has web page preview on right
 
-Return ONLY the IDE name (Cursor, Windsurf, Lovable) or "None" if no match.
+IMPORTANT: Respond with a JSON object containing exactly these two keys:
+- 'detected_ide': must be EXACTLY ONE of these values: 'cursor', 'windsurf', 'lovable', or 'None'
+- 'reasoning': a brief explanation for your decision
+
+Example response format:
+```json
+{
+    "detected_ide": "cursor",
+    "reasoning": "The screenshot shows a VS Code-like interface with integrated AI chat/diff view and 'Cursor Tab' status bar."
+}
 """
     
     # Use the new common function to get Gemini's response
@@ -566,9 +592,11 @@ Return ONLY the IDE name (Cursor, Windsurf, Lovable) or "None" if no match.
     # Extract the response text
     response_text = response.text.strip()
     
-    # Process the response
-    if response_text.lower() in ['cursor', 'windsurf', 'lovable']:
-        detected_ide = response_text.lower()
+    response_json = json.loads(extract_json_content(response_text))
+    # print(f"IDE detection response JSON: {response_json}")
+    
+    if response_json['detected_ide'] in ['cursor', 'windsurf', 'lovable']:
+        detected_ide = response_json['detected_ide']
         
         # Verify the detected IDE is in our list of possible IDEs
         if detected_ide in [ide.lower() for ide in possible_ides]:

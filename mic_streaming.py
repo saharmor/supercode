@@ -97,6 +97,10 @@ class FastSpeechHandler:
         """
         self.should_stop = False
         
+        # Add thread status monitoring
+        self.thread_healthy = True
+        self.last_thread_check = time.time()
+        
         # Start audio capture thread
         self.capture_thread = threading.Thread(target=self._audio_capture_loop)
         self.capture_thread.daemon = True
@@ -106,6 +110,11 @@ class FastSpeechHandler:
         self.transcribe_thread = threading.Thread(target=self._transcribe_loop)
         self.transcribe_thread.daemon = True
         self.transcribe_thread.start()
+        
+        # Start a watchdog thread to monitor and restart if needed
+        self.watchdog_thread = threading.Thread(target=self._watchdog_loop)
+        self.watchdog_thread.daemon = True
+        self.watchdog_thread.start()
         
         return self.capture_thread
     
@@ -139,16 +148,12 @@ class FastSpeechHandler:
         
         # Keep track of when we're paused for command processing
         last_paused_state = False
+        last_active_time = time.time()
+        stream_error_count = 0
         
         try:
             # Open audio stream
-            stream = self.audio.open(
-                format=self.format,
-                channels=self.channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk_size
-            )
+            stream = self._open_audio_stream()
 
             # Calibration step: gather ambient noise for 2 seconds to set the energy threshold
             calibration_duration = 4  # seconds
@@ -156,15 +161,22 @@ class FastSpeechHandler:
             calibration_start = time.time()
             print("Calibrating ambient noise level...")
             while time.time() - calibration_start < calibration_duration:
-                chunk = stream.read(self.chunk_size, exception_on_overflow=False)
-                calibration_samples.append(np.frombuffer(chunk, dtype=np.int16))
+                try:
+                    chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                    calibration_samples.append(np.frombuffer(chunk, dtype=np.int16))
+                except Exception as e:
+                    print(f"Error during calibration: {e}")
+                    time.sleep(0.1)
 
             # Compute the average energy of the ambient noise and set the threshold to 150% of that level
-            background_energy = np.mean([
-                np.sqrt(np.mean(np.square(chunk.astype(np.float32))))
-                for chunk in calibration_samples
-            ])
-            self.energy_threshold = max(background_energy * 1.5, self.energy_threshold)  # Set minimum threshold to avoid ultra-quiet environments
+            if calibration_samples:
+                background_energy = np.mean([
+                    np.sqrt(np.mean(np.square(chunk.astype(np.float32))))
+                    for chunk in calibration_samples
+                ])
+                self.energy_threshold = max(background_energy * 1.5, self.energy_threshold)  # Set minimum threshold to avoid ultra-quiet environments
+            else:
+                print("Warning: Calibration failed, using default energy threshold")
 
             
             # Let subclasses do initialization 
@@ -180,6 +192,18 @@ class FastSpeechHandler:
                         last_paused_state = self.paused_for_processing
                         if self.paused_for_processing:
                             print("Pausing audio capture while processing command...")
+                            last_active_time = time.time()
+                    
+                    # Detect if we've been paused for too long (120 seconds) - could be a stuck state
+                    if self.paused_for_processing and (time.time() - last_active_time > 120):
+                        print("WARNING: Audio capture has been paused for too long (>120s). Forcibly resuming...")
+                        self.paused_for_processing = False
+                        last_paused_state = False
+                        if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, 
+                                                             "Recovered from stuck state")
+                        # Give UI time to update
+                        time.sleep(1)
                     
                     # Skip processing if we're paused
                     if self.paused_for_processing:
@@ -187,7 +211,36 @@ class FastSpeechHandler:
                         continue
                     
                     # Get audio chunk - this is non-blocking and very fast
-                    chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                    try:
+                        chunk = stream.read(self.chunk_size, exception_on_overflow=False)
+                        stream_error_count = 0  # Reset error counter on success
+                    except Exception as e:
+                        stream_error_count += 1
+                        print(f"Error reading audio chunk ({stream_error_count}): {e}")
+                        
+                        # If we get multiple stream errors, try to reopen the stream
+                        if stream_error_count >= 3:
+                            print("Too many stream errors. Attempting to reopen audio stream...")
+                            try:
+                                stream.stop_stream()
+                                stream.close()
+                            except:
+                                pass  # Stream might already be closed
+                                
+                            # Reopen the stream
+                            try:
+                                stream = self._open_audio_stream()
+                                print("Successfully reopened audio stream")
+                                stream_error_count = 0
+                            except Exception as reopen_error:
+                                print(f"Failed to reopen audio stream: {reopen_error}")
+                                # Sleep a bit longer to avoid tight error loops
+                                time.sleep(2)
+                                continue
+                        else:
+                            # For occasional errors, just wait briefly and try again
+                            time.sleep(0.5)
+                            continue
                     
                     # Check if chunk contains speech
                     contains_speech = self._is_speech(chunk)
@@ -219,13 +272,14 @@ class FastSpeechHandler:
                                 is_recording = False
                                 print("Silence threshold reached, processing audio...")
                                 self._on_recording_end()
-        
+                
                                 # Save audio to temp file for transcription
                                 self._save_and_transcribe()
                                 
                                 # Pause recording until command is processed
                                 self.paused_for_processing = True
-                    
+                                last_active_time = time.time()
+                
                     # Small sleep to prevent high CPU usage
                     time.sleep(0.001)
             
@@ -234,6 +288,16 @@ class FastSpeechHandler:
                 import traceback
                 print(traceback.format_exc())
                 self._on_capture_error(e)
+                
+                # Try to recover from the error
+                print("Attempting to recover from capture error...")
+                self.paused_for_processing = False
+                if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                    self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, 
+                                                    "Recovered from error")
+                
+                # Return from this function so the thread can be restarted
+                return
             finally:
                 # Clean up
                 try:
@@ -248,6 +312,16 @@ class FastSpeechHandler:
             import traceback
             print(traceback.format_exc())
             self._on_initialization_error(e)
+            
+            # Try to recover
+            print("Critical error in audio capture. Attempting to restart...")
+            time.sleep(1)
+            
+            # Reset state for potential restart
+            self.paused_for_processing = False
+            if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, 
+                                                "Attempting to restart microphone...")
     
     # Hook methods for subclasses to override
     def _before_audio_capture(self):
@@ -333,12 +407,16 @@ class FastSpeechHandler:
         """
         Process transcription requests from the queue.
         """
+        consecutive_errors = 0
+        last_error_time = 0
+        
         while not self.should_stop:
             try:
                 # Check if we should be processing anything
                 if self.paused_for_processing == False and self.transcription_queue.empty():
                     # Nothing to process and not paused - sleep briefly
                     time.sleep(0.1)
+                    consecutive_errors = 0  # Reset error counter during normal operation
                     continue
                     
                 # Get next file to transcribe with short timeout
@@ -347,63 +425,60 @@ class FastSpeechHandler:
                 except queue.Empty:
                     continue
                 
-                # TODO fix or remove
-                # # Check if audio is just random noise
-                # with wave.open(audio_file, 'rb') as wf:
-                #     # Read audio data
-                #     audio_data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
-                #     # Calculate RMS energy
-                #     rms = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
-                #     # Check if below noise threshold
-                #     if rms < self.energy_threshold * 0.8:  # Use slightly lower threshold
-                #         print("Audio appears to be random noise, skipping transcription")
-                #         if os.path.exists(audio_file):
-                #             os.unlink(audio_file)
-                #         self.transcription_queue.task_donesco()
-                #         continue
-                
                 print("Transcribing audio...")
                 start_time = time.time()
-                # Use speech_recognition library to transcribe
-                with sr.AudioFile(audio_file) as source:
-                    audio_data = self.recognizer.record(source)
-                    try:
-                        if self.use_openai_api:
-                            try:
-                                audio_file_obj = open(audio_file, 'rb')        
-                                result = self.openai_client.audio.transcriptions.create(
-                                    model=self.openai_transcription_model,
-                                    file=audio_file_obj,
-                                    language="en",
-                                    prompt="This is a recording of a user interacting with an IDE. Transcribe the user's words from start to finish, without adding anything else!"
-                                )
-                                
-                                text = result.text
-                            except Exception as api_call_error:
-                                print(f"API call error: {str(api_call_error)}")
-                                print("Falling back to Google speech recognition...")
+                audio_file_obj = None
+                
+                try:
+                    # Use speech_recognition library to transcribe
+                    with sr.AudioFile(audio_file) as source:
+                        audio_data = self.recognizer.record(source)
+                        try:
+                            if self.use_openai_api:
+                                try:
+                                    audio_file_obj = open(audio_file, 'rb')        
+                                    result = self.openai_client.audio.transcriptions.create(
+                                        model=self.openai_transcription_model,
+                                        file=audio_file_obj,
+                                        language="en",
+                                        prompt="This is a recording of a user interacting with an IDE. Transcribe the user's words from start to finish, without adding anything else!"
+                                    )
+                                    
+                                    text = result.text
+                                except Exception as api_call_error:
+                                    print(f"API call error: {str(api_call_error)}")
+                                    print("Falling back to Google speech recognition...")
+                                    text = self.recognizer.recognize_google(audio_data)
+                                    print(f"Google fallback succeeded: '{text}'")
+                            else:
                                 text = self.recognizer.recognize_google(audio_data)
-                                print(f"Google fallback succeeded: '{text}'")
-                        else:
-                            text = self.recognizer.recognize_google(audio_data)
-                        
-                        # Clean the text by removing punctuation and converting to lowercase
-                        clean_text = ''.join(c for c in text if c.isalnum() or c.isspace()).lower()
-                        delta = time.time() - start_time
-                        print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
-                        # Process the recognized text
-                        self._process_recognized_text(clean_text)
-                    except sr.UnknownValueError:
-                        print("Speech not recognized")
-                    except Exception as e:
-                        print(f"Error in transcription: {str(e)}")
-                        # Add more detailed error logging
-                        import traceback
-                        print(f"Detailed transcription error: {traceback.format_exc()}")
-                    finally:
-                        # Always close file
-                        audio_file_obj.close()
-                        
+                            
+                            # Clean the text by removing punctuation and converting to lowercase
+                            clean_text = ''.join(c for c in text if c.isalnum() or c.isspace()).lower()
+                            delta = time.time() - start_time
+                            print(f"Transcription took {delta:.2f}s - Heard: '{text}'")
+                            # Process the recognized text
+                            self._process_recognized_text(clean_text)
+                            consecutive_errors = 0  # Reset error counter on success
+                        except sr.UnknownValueError:
+                            print("Speech not recognized")
+                            # This is a normal case (silence, noise, etc.), not an error
+                            consecutive_errors = 0
+                        except Exception as e:
+                            consecutive_errors += 1
+                            print(f"Error in transcription: {str(e)}")
+                            # Add more detailed error logging
+                            import traceback
+                            print(f"Detailed transcription error: {traceback.format_exc()}")
+                        finally:
+                            if audio_file_obj:
+                                # Always close file
+                                audio_file_obj.close()
+                except Exception as file_error:
+                    consecutive_errors += 1
+                    print(f"Error opening audio file: {file_error}")
+                    import traceback
+                    print(traceback.format_exc())
                         
                 self.transcription_queue.task_done()
                 
@@ -415,8 +490,32 @@ class FastSpeechHandler:
                     # Reset overlay status if available
                     if hasattr(self, 'overlay_manager') and self.overlay_manager:
                         self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+                    
+                # If we've had too many consecutive errors, force a reset
+                if consecutive_errors >= 3:
+                    current_time = time.time()
+                    if current_time - last_error_time > 60:  # Only reset once per minute
+                        print("Too many consecutive transcription errors. Forcing reset of audio processing.")
+                        self.paused_for_processing = False
+                        if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, 
+                                                           "Recovered from transcription errors")
+                        last_error_time = current_time
+                        consecutive_errors = 0
+                
             except Exception as e:
                 print(f"Error in transcription loop: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                
+                # Make sure we don't get stuck due to an error
+                if self.paused_for_processing:
+                    print("Error while paused - forcing resume of audio processing")
+                    self.paused_for_processing = False
+                    if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                        self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, 
+                                                       "Recovered from error")
+                
                 time.sleep(0.5)
     
     def _process_recognized_text(self, text):
@@ -448,6 +547,56 @@ class FastSpeechHandler:
                 print(traceback.format_exc())
                 # Always reset on error
                 self.resume_audio_processing()
+
+    def _watchdog_loop(self):
+        """
+        Monitor audio capture thread and restart if it dies.
+        """
+        while not self.should_stop:
+            time.sleep(5)  # Check every 5 seconds
+            
+            if not self.capture_thread.is_alive():
+                print("WARNING: Audio capture thread has died. Restarting...")
+                
+                # Reset state
+                self.paused_for_processing = False
+                
+                # Update overlay status
+                if hasattr(self, 'overlay_manager') and self.overlay_manager:
+                    self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, 
+                                                     "Restarting microphone...")
+                
+                # Start a new audio capture thread
+                self.capture_thread = threading.Thread(target=self._audio_capture_loop)
+                self.capture_thread.daemon = True
+                self.capture_thread.start()
+                
+                print("Audio capture thread restarted.")
+                
+            if not self.transcribe_thread.is_alive():
+                print("WARNING: Transcription thread has died. Restarting...")
+                
+                # Start a new transcription thread
+                self.transcribe_thread = threading.Thread(target=self._transcribe_loop)
+                self.transcribe_thread.daemon = True
+                self.transcribe_thread.start()
+                
+                print("Transcription thread restarted.")
+
+    def _open_audio_stream(self):
+        """Helper method to open an audio stream with proper error handling"""
+        try:
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk_size
+            )
+            return stream
+        except Exception as e:
+            print(f"Error opening audio stream: {e}")
+            raise
 
 class SpeechActivationHandler:
     def __init__(self, activation_word="activate", silence_duration=2.0, command_processor=None):

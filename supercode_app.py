@@ -232,7 +232,9 @@ class SuperCodeApp(rumps.App):
         try:            
             # Try to initialize the interface (default one)
             # read interface_config from file
-            if not detect_ide_with_gemini(CommandProcessor.read_interface_config().keys()):
+            detected_ide = detect_ide_with_gemini(CommandProcessor.read_interface_config().keys())
+            print(f"Detected IDE upon SuperCode start: {detected_ide}")
+            if not detected_ide:
                 # Interface initialization failed - IDE is likely not open/focused
                 self.is_listening = False
                 
@@ -534,7 +536,6 @@ class EnhancedSpeechHandler(FastSpeechHandler):
             
     def resume_audio_processing(self):
         """Resume audio processing after command execution"""
-        print("Resuming audio processing after command execution")
         self.paused_for_processing = False
         # Reset overlay status if available
         if self.overlay_manager:
@@ -577,7 +578,7 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                             threading.Timer(1.0, self.stop_callback).start()
                         return
                     
-                    # Handle other known command types - always pass resume_audio_processing as the callback
+                    # Handle other known command types
                     elif command_type in ["type", "click", "learn", "change"]:
                         try:
                             self.command_processor.execute_command(command, self.resume_audio_processing)

@@ -92,3 +92,13 @@ def cleanup_old_files(directory, pattern, max_files=10):
                 os.remove(file_path)
             except Exception as e:
                 print(f"Error removing file {file_path}: {e}")
+
+def extract_json_content(response_text):
+    # Look for JSON content between triple backticks if present
+    if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+        json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+        json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+    else:
+        json_content = response_text
+    return json_content
