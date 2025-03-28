@@ -161,20 +161,21 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
         return False, f"Error: {str(e)}"
 
 
-def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None, completion_callback=None, max_still_working_checks=30, max_check_interval=10.0, min_check_interval=3.0):
+def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=5.0, output_dir="screenshots", interface_name=None, completion_callback=None, max_still_working_checks=30, max_check_interval=10.0, min_check_interval=3.0, still_working_growth_factor=0.5):
     """
     Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
     Args:
         interface_state_prompt (str): The prompt to send to Gemini for analyzing screenshots.
         monitor (dict, optional): Monitor region to capture. If None, captures based on current monitor.
-        interval (float, optional): Default check interval in seconds. Defaults to 4.0.
+        interval (float, optional): Default check interval in seconds. Defaults to 5.0.
         output_dir (str, optional): Output directory for screenshots. Defaults to "screenshots".
         interface_name (str, optional): Name of the interface being monitored. If provided, used in filename prefix.
         completion_callback (callable, optional): Function to call when monitoring is complete.
         max_still_working_checks (int, optional): Maximum number of consecutive "still_working" states before stopping. Defaults to 30 (0 = unlimited).
         max_check_interval (float, optional): Maximum interval between checks in seconds. Defaults to 10.0.
-        min_check_interval (float, optional): Minimum interval between checks in seconds. Defaults to 2.0.
+        min_check_interval (float, optional): Minimum interval between checks in seconds. Defaults to 3.0.
+        still_working_growth_factor (float, optional): Controls how quickly the interval grows with consecutive still_working states. Higher values = faster growth. Defaults to 0.5.
     """
     # Track consecutive state occurrences to adjust checking frequency
     consecutive_still_working_count = 0
@@ -320,11 +321,13 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     
                     # Dynamic interval adjustment based on consecutive "still_working" states
                     # Start with normal interval, increase as consecutive still_working states increase
-                    if consecutive_still_working_count > 3:
-                        # Calculate an adjusted interval, capped at max_check_interval
-                        factor = min(1.0 + (consecutive_still_working_count / 10), 2.5)  # Maximum 2.5x interval multiplier
+                    if consecutive_still_working_count > 2:
+                        # Improved growth formula that scales more aggressively with consecutive counts
+                        # Use still_working_growth_factor to control how quickly the interval grows
+                        factor = 1.0 + (still_working_growth_factor * consecutive_still_working_count / 5)
                         current_interval = min(interval * factor, max_check_interval)
                         current_interval = max(current_interval, min_check_interval)  # Ensure it's not below minimum
+                        print(f"Increasing check interval to {current_interval:.2f}s (count: {consecutive_still_working_count})")
                     else:
                         current_interval = interval
                     

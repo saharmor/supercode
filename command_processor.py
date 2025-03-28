@@ -121,7 +121,7 @@ class CommandProcessor:
         return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
         
         
-    def start_ide_monitoring(self, monitor, completion_callback=None, max_still_working_checks=60, max_check_interval=10.0, min_check_interval=3.0):
+    def start_ide_monitoring(self, monitor, completion_callback=None, max_still_working_checks=60, max_check_interval=10.0, min_check_interval=3.0, still_working_growth_factor=0.5):
         """
         Start a background thread that monitors the IDE state until it's done.
         Uses the monitor_ide_state function from monitor_ide_state.py.
@@ -132,6 +132,7 @@ class CommandProcessor:
             max_still_working_checks: Maximum number of consecutive "still_working" states before stopping (0 = unlimited)
             max_check_interval: Maximum interval between checks in seconds
             min_check_interval: Minimum interval between checks in seconds
+            still_working_growth_factor: Controls how quickly the interval grows with consecutive still_working states (higher = faster growth)
         """
         try:
             # Import the function here to avoid circular imports
@@ -148,13 +149,14 @@ class CommandProcessor:
                 target=monitor_coding_generation_state,
                 args=(interface_state_prompt, monitor),
                 kwargs={
-                    'interval': 2.0,
+                    'interval': 5.0,
                     'output_dir': "screenshots",
                     'interface_name': self.current_interface,
                     'completion_callback': completion_callback,
                     'max_still_working_checks': max_still_working_checks,
                     'max_check_interval': max_check_interval,
-                    'min_check_interval': min_check_interval
+                    'min_check_interval': min_check_interval,
+                    'still_working_growth_factor': still_working_growth_factor
                 }
             )
             self.interface_monitor_thread.daemon = True
@@ -208,7 +210,7 @@ class CommandProcessor:
             return False
             
         
-    def execute_command(self, command_text, completion_callback=None):
+    def execute_command(self, command_text, completion_callback=None, still_working_growth_factor=0.5):
         """
         Execute a command based on the transcribed text.
         Override this method to implement your own command execution logic.
@@ -216,6 +218,7 @@ class CommandProcessor:
         Args:
             command_text: The text of the command to execute.
             completion_callback: Optional callback to call when command execution is complete.
+            still_working_growth_factor: Controls how quickly the interval grows with consecutive still_working states.
             
         Returns:
             bool: True if the command was executed successfully, False otherwise.
@@ -259,10 +262,17 @@ class CommandProcessor:
             
             print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
             if completion_callback:
-                self.start_ide_monitoring(monitor=self.interface_monitor_region, completion_callback=completion_callback)
+                self.start_ide_monitoring(
+                    monitor=self.interface_monitor_region, 
+                    completion_callback=completion_callback,
+                    still_working_growth_factor=still_working_growth_factor
+                )
             else:
                 print("Warning: No completion callback provided for 'type' command")
-                self.start_ide_monitoring(monitor=self.interface_monitor_region)
+                self.start_ide_monitoring(
+                    monitor=self.interface_monitor_region,
+                    still_working_growth_factor=still_working_growth_factor
+                )
             return True
         elif command_type == "click":
             # First, ensure the correct window is focused
@@ -377,18 +387,23 @@ class CommandQueue:
                 return False
         return True
     
-    def execute_commands(self, commands, completion_callback=None):
+    def execute_commands(self, commands, completion_callback=None, still_working_growth_factor=0.5):
         """
         Execute a list of commands.
         
         Args:
             commands: A list of command strings to execute.
             completion_callback: Optional callback to call when all commands have completed execution.
+            still_working_growth_factor: Controls how quickly the interval grows with consecutive still_working states.
         """
         for command in commands:
             if command:
                 try:
-                    self.command_processor.execute_command(command, completion_callback)
+                    self.command_processor.execute_command(
+                        command, 
+                        completion_callback,
+                        still_working_growth_factor=still_working_growth_factor
+                    )
                 except Exception as e:
                     print(f"Error executing command: {str(e)}")
                     # If there's an error and we have a callback, call it
