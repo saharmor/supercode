@@ -121,7 +121,7 @@ class CommandProcessor:
         return bring_to_front_window(self.interface_config.keys(), self.current_interface, project_name)
         
         
-    def start_ide_monitoring(self, monitor, completion_callback=None, max_still_working_checks=60, max_check_interval=10.0, min_check_interval=2.0):
+    def start_ide_monitoring(self, monitor, completion_callback=None, max_still_working_checks=60, max_check_interval=10.0, min_check_interval=3.0):
         """
         Start a background thread that monitors the IDE state until it's done.
         Uses the monitor_ide_state function from monitor_ide_state.py.
