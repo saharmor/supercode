@@ -64,30 +64,25 @@ def capture_screenshot(monitor=None, resize_width=None, return_base64=False, tem
     Returns:
         Union[Image.Image, str]: Either a PIL Image object or a base64-encoded string.
     """
-    total_start_time = time.time()
     
     try:
         # Always use pyautogui.screenshot() for all platforms
         region = None
         if monitor == 'current':
-            m_start_time = time.time()
             m = get_active_window_monitor()
             
             region = (m['left'], m['top'], m['width'], m['height'])
         elif isinstance(monitor, dict):
             region = (monitor['left'], monitor['top'], monitor['width'], monitor['height'])
         
-        pyautogui_start_time = time.time()
         screenshot = pyautogui.screenshot(region=region)
 
         # Save to temp file if provided
         if temp_file:
-            save_start_time = time.time()
             screenshot.save(temp_file, format="PNG")
 
         # Resize
         if resize_width:
-            resize_start_time = time.time()
             ratio = screenshot.height / screenshot.width
             resize_height = int(resize_width * ratio)
             screenshot = screenshot.resize((resize_width, resize_height))
@@ -448,7 +443,6 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
         tuple: (bool, response_obj) - Success flag and response object from Gemini
                or (False, error_str) if an error occurred
     """
-    function_start = time.time()
     log_time = time.strftime('%H:%M:%S')
     
     try:
@@ -488,7 +482,6 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
                     
                     # Ensure image is in RGB format for compatibility
                     if img.mode != "RGB":
-                        convert_start = time.time()
                         img = img.convert("RGB")
                     
                     # Generate content with image

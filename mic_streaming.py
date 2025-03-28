@@ -438,25 +438,16 @@ class FastSpeechHandler:
                 return
                 
             try:
-                # Check if any command is a "type" command that uses background monitoring
-                has_type_command = any(cmd.strip().startswith("type") for cmd in commands)
-                
-                if has_type_command:
-                    # For "type" commands, wait for completion callback
-                    print("Audio capture will remain paused until command processing completes...")
-                    # Use bound method instead of local function
-                    self.command_queue.execute_commands(commands, self.resume_audio_processing)
-                else:
-                    # For commands without background monitoring, execute and reset immediately
-                    self.command_queue.execute_commands(commands)
-                    self.resume_audio_processing()
-                    
+                # IMPORTANT: Always pass the callback for ALL command types
+                # This ensures we return to listening mode after ANY command completes
+                print("Audio capture will remain paused until command processing completes...")
+                self.command_queue.execute_commands(commands, self.resume_audio_processing)
             except Exception as e:
                 print(f"Error executing commands: {str(e)}")
                 import traceback
                 print(traceback.format_exc())
                 # Always reset on error
-                resume_audio_processing()
+                self.resume_audio_processing()
 
 class SpeechActivationHandler:
     def __init__(self, activation_word="activate", silence_duration=2.0, command_processor=None):

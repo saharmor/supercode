@@ -168,8 +168,22 @@ class CommandProcessor:
     
     
     def change_interface(self, command_params):
+        """
+        Change the current interface to the target interface.
+        
+        Args:
+            command_params: The command parameters, which should contain the target interface name
+                            and optionally a project name.
+        
+        Returns:
+            bool: True if the interface was successfully changed, False otherwise.
+        """
         # TODO handle cases where changing to the same project name
         change_params = command_params.lower().strip().split()
+        if not change_params:
+            print("Error: No interface specified in change command")
+            return False
+            
         target_interface = change_params[0]
         for interface_name in self.interface_config.keys():
             if target_interface in self.interface_config[interface_name].get("transcribed_similar_words", []):
@@ -181,8 +195,15 @@ class CommandProcessor:
             return False
         
         project_name = " ".join(change_params[1:])
-        bring_to_front_window(self.interface_config.keys(), target_interface, project_name)
+        if not bring_to_front_window(self.interface_config.keys(), target_interface, project_name):
+            print(f"Warning: Could not focus the {target_interface} window")
+            # Continue anyway as we might still be able to initialize
+            
         self.current_project_name = get_current_window_name()
+
+        # Lovable needs a bit of time to load
+        if target_interface == "lovable":
+            time.sleep(3.0)
 
         success = self.initialize_interface(target_interface)
         if success:
@@ -204,6 +225,7 @@ class CommandProcessor:
             else:
                 os.system(f"say 'Development environment changed to {target_interface}'")
             self.current_interface = target_interface
+            return True
         else:
             print(f"Error: Could not initialize {target_interface} interface")
             play_beep(1200, 1000)
@@ -245,6 +267,8 @@ class CommandProcessor:
                     print("Invalid coding prompt - please provide a prompt that makes sense for coding tasks :D")
                     # play sound to notify user
                     play_beep(1200, 1000)
+                    if completion_callback:
+                        completion_callback()  # Return to listening mode even on error
                     return False
                 
                 prompt = enhanced_prompt.prompt
@@ -258,6 +282,8 @@ class CommandProcessor:
             else:
                 print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
+                if completion_callback:
+                    completion_callback()  # Return to listening mode even on error
                 return False
             
             print(f"Starting {self.current_interface} monitoring since a 'type' command was detected")
@@ -268,7 +294,7 @@ class CommandProcessor:
                     still_working_growth_factor=still_working_growth_factor
                 )
             else:
-                print("Warning: No completion callback provided for 'type' command")
+                # print("Warning: No completion callback provided for 'type' command")
                 self.start_ide_monitoring(
                     monitor=self.interface_monitor_region,
                     still_working_growth_factor=still_working_growth_factor
@@ -285,28 +311,54 @@ class CommandProcessor:
             if command_params not in self.buttons:
                 print(f"Error: No button named '{command_params}' has been learned")
                 play_beep(1200, 1000)
+                if completion_callback:
+                    completion_callback()  # Return to listening mode even on error
                 return False
                 
             pyautogui.moveTo(self.buttons[command_params][0], self.buttons[command_params][1])
             pyautogui.click(button="left")
+            if completion_callback:
+                completion_callback()  # Return to listening mode after click
             return True
         elif command_type == "learn": # only buttons for now
             btn_name = command_params.split(" ")[0]
             btn_selector = " ".join(command_params.split(" ")[1:])
-            self.buttons[btn_name] = get_coordinates_for_prompt(btn_selector, monitor=self.interface_monitor_region)
+            if not btn_name or not btn_selector:
+                print(f"Error: Invalid learn command format. Use 'learn button_name selector text'")
+                play_beep(1200, 1000)
+                if completion_callback:
+                    completion_callback()  # Return to listening mode even on error
+                return False
+                
+            coordinates = get_coordinates_for_prompt(btn_selector, monitor=self.interface_monitor_region)
+            if coordinates:
+                self.buttons[btn_name] = coordinates
+                print(f"Successfully learned button '{btn_name}' at coordinates {coordinates}")
+                if completion_callback:
+                    completion_callback()  # Return to listening mode after successful learning
+                return True
+            else:
+                print(f"Error: Could not find coordinates for '{btn_selector}'")
+                play_beep(1200, 1000)
+                if completion_callback:
+                    completion_callback()  # Return to listening mode even on error
+                return False
         elif command_type == "change":
-            self.change_interface(command_params)
+            success = self.change_interface(command_params)
+            if completion_callback:
+                completion_callback()  # Return to listening mode after interface change
+            return success
         elif command_type == "stop":
             # Stop command is handled in EnhancedSpeechHandler
             print("Stopping voice recognition")
             os.system("say 'Voice recognition stopped'")
+            # Don't call completion_callback for stop command as it's handled specially
             return True
         else:
             print(f"Unknown command type: '{command_type}'")
+            if completion_callback:
+                completion_callback()  # Return to listening mode even for unknown commands
             return False
-
-        return True
-        
 
 class CommandQueue:
     """
@@ -396,6 +448,13 @@ class CommandQueue:
             completion_callback: Optional callback to call when all commands have completed execution.
             still_working_growth_factor: Controls how quickly the interval grows with consecutive still_working states.
         """
+        # If there are no commands to execute but we have a completion callback,
+        # call it immediately so we return to listening mode
+        if not commands and completion_callback:
+            print("No commands to execute, returning to listening mode")
+            completion_callback()
+            return
+            
         for command in commands:
             if command:
                 try:
@@ -409,3 +468,6 @@ class CommandQueue:
                     # If there's an error and we have a callback, call it
                     if completion_callback:
                         completion_callback()
+            elif completion_callback:  # Empty command but we have a callback
+                print("Empty command, returning to listening mode")
+                completion_callback()

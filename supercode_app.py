@@ -246,7 +246,7 @@ class SuperCodeApp(rumps.App):
                 rumps.notification("SuperCode", "Error", error_message)
                 
                 # Additional info via say command
-                os.system(f"say 'Error: {error_message}. Close and re-run SuperCode once the IDE is open and focused.'")
+                os.system(f"say 'Error: {error_message}. Close and re-run SuperCode once t.'")
                 
                 # Find the "Stop Listening" menu item and update it back to "Start Listening"
                 for item in self.menu:
@@ -531,6 +531,14 @@ class EnhancedSpeechHandler(FastSpeechHandler):
         # Update overlay with error
         if self.overlay_manager:
             self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE, "Error: " + str(error))
+            
+    def resume_audio_processing(self):
+        """Resume audio processing after command execution"""
+        print("Resuming audio processing after command execution")
+        self.paused_for_processing = False
+        # Reset overlay status if available
+        if self.overlay_manager:
+            self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
 
     # Override process_recognized_text to update overlay
     def _process_recognized_text(self, text):
@@ -569,12 +577,14 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                             threading.Timer(1.0, self.stop_callback).start()
                         return
                     
-                    # Handle other known command types
+                    # Handle other known command types - always pass resume_audio_processing as the callback
                     elif command_type in ["type", "click", "learn", "change"]:
                         try:
-                            self.command_processor.execute_command(command)
+                            self.command_processor.execute_command(command, self.resume_audio_processing)
                         except Exception as e:
                             print(f"Error executing command: {e}")
+                            # Always reset on error
+                            self.resume_audio_processing()
                     
                     # Unknown command type - show special message
                     else:
@@ -587,10 +597,15 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                             # Schedule reset of overlay status after 3 seconds
                             threading.Timer(3.0, lambda: self.overlay_manager.update_status(
                                 self.overlay_manager.STATUS_IDLE)).start()
+                        
+                        # Always reset audio processing for unknown commands
+                        self.resume_audio_processing()
                 
                 # Reset overlay status if no commands were found
                 if self.overlay_manager and not commands:
                     self.overlay_manager.update_status(self.overlay_manager.STATUS_IDLE)
+                    # Reset audio processing
+                    self.resume_audio_processing()
         else:
             # No activation word found - display as ignored
             if self.overlay_manager:
@@ -607,6 +622,9 @@ class EnhancedSpeechHandler(FastSpeechHandler):
                 # Reset to idle status after 3 seconds
                 threading.Timer(3.0, lambda: self.overlay_manager.update_status(
                     self.overlay_manager.STATUS_IDLE)).start()
+                
+            # Reset audio processing when no activation word is found
+            self.resume_audio_processing()
 
 
 def main():
