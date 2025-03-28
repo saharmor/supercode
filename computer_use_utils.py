@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from PIL import Image
 from screeninfo import get_monitors
 
+import google.generativeai as genai
+
 load_dotenv()
 
 # Define scaling source enum similar to computer.py
@@ -424,14 +426,6 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
                or (False, error_str) if an error occurred
     """
     try:
-        # Import Google Gemini AI library
-        import google.generativeai as genai
-        from dotenv import load_dotenv
-        
-        # Load environment variables
-        load_dotenv()
-        
-        # Check for API key
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             error_msg = "Error: GEMINI_API_KEY or GOOGLE_API_KEY environment variable not found."

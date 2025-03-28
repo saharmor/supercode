@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Literal, Dict, Any
 
-from computer_use_utils import bring_to_front_window, get_active_window_monitor, get_coordinates_for_prompt, get_current_window_name
+from computer_use_utils import bring_to_front_window, detect_ide_with_gemini, get_active_window_monitor, get_coordinates_for_prompt, get_current_window_name
 from utils import play_beep, enhance_user_prompt
 
 load_dotenv()
@@ -30,16 +30,17 @@ class CommandProcessor:
     Supports multiple interfaces (Windsurf, lovable) with different command selectors.
     """
     # Default interface
-    DEFAULT_IDE = 'windsurf'
+    DEFAULT_IDE = 'cursor'
     # DEFAULT_IDE = 'lovable'
     
     def __init__(self, app=None):
-        self.current_interface = os.getenv("DEFAULT_IDE", self.DEFAULT_IDE)
         self.app = app  # Reference to the main app for interface name updates
 
         # Load interface configuration from JSON file
         self.interface_config = self._load_interface_config()
         
+        self.current_interface = detect_ide_with_gemini(self.interface_config.keys())
+
         # Initialize actions_coordinates with nested structure
         # Format: {"interface_name": {"command_name": (x, y)}}
         self.actions_coordinates = {}
@@ -59,12 +60,8 @@ class CommandProcessor:
         # Cascade monitoring thread
         self.interface_monitor_thread = None
     
-    def _load_interface_config(self) -> Dict[str, Any]:
-        """Load interface configuration from JSON file.
-        
-        Returns:
-            dict: The interface configuration loaded from the JSON file
-        """
+    @staticmethod
+    def read_interface_config():
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "interfaces.json")
         try:
             with open(config_path, 'r') as f:
@@ -74,6 +71,14 @@ class CommandProcessor:
             print("Using default configuration")
             # Return an empty dict as fallback
             return {}
+    
+    def _load_interface_config(self) -> Dict[str, Any]:
+        """Load interface configuration from JSON file.
+        
+        Returns:
+            dict: The interface configuration loaded from the JSON file
+        """
+        return self.read_interface_config()
     
     def initialize_interface(self, interface_name):
         """Initialize action coordinates for the specified interface
@@ -104,6 +109,10 @@ class CommandProcessor:
         interface_commands = self.interface_config[interface_name]['commands']
         for cmd_name, cmd_data in interface_commands.items():
             coords = get_coordinates_for_prompt(cmd_data['llm_selector'], monitor=self.interface_monitor_region)
+            if not coords:
+                print(f"Error: No coordinates found for {cmd_name} in {interface_name} interface")
+                os.system(f"say 'Error: No coordinates found for {interface_name} interface'. Make sure {interface_name} is open and in focus on primary screen and try again.")
+                return False
             self.actions_coordinates[interface_name][cmd_name] = coords
         
         return True

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from computer_use_utils import detect_ide_with_gemini
 from mic_streaming import FastSpeechHandler
 from command_processor import CommandProcessor
 from overlay_manager import OverlayManager
@@ -24,9 +25,11 @@ try:
     from pynput import keyboard
     HAS_PYNPUT = True
 except ImportError:
-    # Silently handle missing pynput - it should be installed via requirements.txt
+    # Handle missing pynput with a clearer message
     HAS_PYNPUT = False
-    print("Failed to import pynput")
+    print("\033[1;33mWarning: Failed to import pynput module\033[0m")
+    print("\033[1;33mGlobal keyboard shortcuts (Cmd+Opt+L) will not be available\033[0m")
+    print("\033[1;33mInstall pynput with: pip install pynput>=1.7.6\033[0m")
 
 class SingleInstanceChecker:
     """
@@ -224,6 +227,54 @@ class SuperCodeApp(rumps.App):
         
         # Set initializing status
         self.overlay_manager.update_status(self.overlay_manager.STATUS_INITIALIZING, "Preparing microphone...")
+        
+        # First initialize the interface to make sure the IDE is open and focused
+        try:            
+            # Try to initialize the interface (default one)
+            # read interface_config from file
+            if not detect_ide_with_gemini(CommandProcessor.read_interface_config().keys()):
+                # Interface initialization failed - IDE is likely not open/focused
+                self.is_listening = False
+                
+                error_message = "IDE not found on primary monitor"
+                detailed_message = "Please make sure your IDE is open and in focus on the primary monitor, then try again."
+                
+                # Update overlay with error
+                self.overlay_manager.update_status("Error: " + error_message, detailed_message)
+                
+                # Show error notification
+                rumps.notification("SuperCode", "Error", error_message)
+                
+                # Additional info via say command
+                os.system(f"say 'Error: {error_message}. Use Command Option L shortcut after fixing.'")
+                
+                # Find the "Stop Listening" menu item and update it back to "Start Listening"
+                for item in self.menu:
+                    if hasattr(item, 'title') and item.title == "Stop Listening":
+                        item.title = "Start Listening"
+                        break
+                        
+                print(f"Error: {error_message}. {detailed_message}")
+                return
+        except Exception as e:
+            # Handle any exceptions during interface initialization
+            self.is_listening = False
+            error_message = f"Error initializing interface: {str(e)}"
+            
+            # Update overlay with error
+            self.overlay_manager.update_status("Error", error_message)
+            
+            # Show error notification
+            rumps.notification("SuperCode", "Error", error_message)
+            
+            # Find the "Stop Listening" menu item and update it back to "Start Listening"
+            for item in self.menu:
+                if hasattr(item, 'title') and item.title == "Stop Listening":
+                    item.title = "Start Listening"
+                    break
+                    
+            print(error_message)
+            return
         
         # Create a new thread to run the whisper streaming handler
         self.listen_thread = threading.Thread(target=self.run_whisper_handler)
@@ -602,8 +653,14 @@ def main():
                 sys.exit(1)
         
         # Initialize QApplication first
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtCore import QTimer, QCoreApplication
+        try:
+            from PyQt5.QtWidgets import QApplication
+            from PyQt5.QtCore import QTimer, QCoreApplication
+        except ImportError:
+            print("\n\033[1;31mError: PyQt5 module not found.\033[0m")
+            print("\033[1;33mPlease install it by running: pip install PyQt5>=5.15.6\033[0m")
+            print("\033[1;33mOr rerun the install script: ./install_and_run.sh\033[0m\n")
+            sys.exit(1)
         
         # Create QApplication instance
         qt_app = QApplication.instance()

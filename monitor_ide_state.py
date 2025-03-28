@@ -161,7 +161,9 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
 
 def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None, completion_callback=None):
     # Debug: Print whether we have a callback
-    print(f"Debug: monitor_coding_generation_state received completion_callback: {completion_callback is not None}")
+    log_time = time.strftime('%H:%M:%S')
+    print(f"[{log_time}] Debug: Starting monitor_coding_generation_state")
+    print(f"[{log_time}] Debug: monitor_coding_generation_state received completion_callback: {completion_callback is not None}")
     """
     Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
@@ -173,14 +175,18 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
     """
     try:
         # Initialize Gemini API
+        log_time = time.strftime('%H:%M:%S')
+        print(f"[{log_time}] Initializing Gemini API")
         gemini_initialized = initialize_gemini_client()
         if not gemini_initialized:
-            print(f"⚠️ Could not initialize Gemini API. Cannot monitor {interface_name} state.")
+            log_time = time.strftime('%H:%M:%S')
+            print(f"[{log_time}] ⚠️ Could not initialize Gemini API. Cannot monitor {interface_name} state.")
             return
             
-        print(f"🔍 Starting {interface_name} state monitoring...")
-        print("   - Will notify when coding generation needs your input or is done")
-        print("   - Press Ctrl+C to stop monitoring")
+        log_time = time.strftime('%H:%M:%S')
+        print(f"[{log_time}] 🔍 Starting {interface_name} state monitoring...")
+        print(f"[{log_time}] - Will notify when coding generation needs your input or is done")
+        print(f"[{log_time}] - Press Ctrl+C to stop monitoring")
         
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -196,10 +202,17 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
         last_state = None
         
         # wait for two seconds before starting
+        log_time = time.strftime('%H:%M:%S')
+        print(f"[{log_time}] Waiting 2 seconds before starting monitoring loop")
         time.sleep(2)
         
+        loop_start_time = time.time()
         while True:
             try:
+                iteration_start = time.time()
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] ---- Monitoring iteration {screenshot_count + 1} started ----")
+                
                 # Generate a filename for this screenshot
                 screenshot_count += 1
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -207,13 +220,16 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 path = os.path.join(output_dir, filename)
                 
                 # Clean up old screenshots, keeping only the newest 10
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Cleaning up old screenshots")
                 cleanup_old_files(output_dir, f"{file_prefix}*_screenshot.png", max_files=10)
                 
-                
                 # Use the unified screenshot function and common send_screenshot_to_gemini utility
-                print(f"\rChecking coding generation state ({screenshot_count})...", end="")
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Taking and sending screenshot to Gemini")
                 
                 # Use the common utility function to send the image directly to Gemini
+                capture_start = time.time()
                 success, response = send_screenshot_to_gemini(
                     prompt=interface_state_prompt,
                     monitor=monitor,
@@ -221,14 +237,21 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     model_name='gemini-2.0-flash-lite',
                     verbose=True
                 )
+                capture_time = time.time() - capture_start
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Screenshot capture and analysis took {capture_time:.2f}s")
                 
                 if not success:
-                    print(f"\nError analyzing IDE state: {response}")
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Error analyzing IDE state: {response}")
                     time.sleep(interval)
                     continue
                 
                 # Process the response to determine IDE state
                 try:
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Processing Gemini response")
+                    
                     # Extract JSON from response text
                     response_text = response.text.strip().lower()
                     
@@ -240,62 +263,151 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     else:
                         json_content = response_text
                     
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] JSON content: {json_content}")
+                    
                     gemini_response = json.loads(json_content)
                     state = gemini_response["interface_state"].lower()
                     
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Got state: {state}")
+                    
                     # Validate response matches expected format
                     if state not in ["user_input_required", "still_working", "done"]:
-                        print(f"\nWarning: Unexpected state from Gemini: {state}")
+                        log_time = time.strftime('%H:%M:%S')
+                        print(f"[{log_time}] Warning: Unexpected state from Gemini: {state}")
                         state = "still_working"  # Default to still working if response is unclear
                 except Exception as e:
-                    print(f"\nError parsing Gemini response: {e}")
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Error parsing Gemini response: {e}")
+                    # Print full exception
+                    import traceback
+                    print(f"[{log_time}] {traceback.format_exc()}")
                     state = "still_working"  # Default to still working if parsing fails
                 
                 if state != last_state:
-                    print(f"\nCoding generation state: {state}")
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Coding generation state changed: {state}")
                     last_state = state
+                else:
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Coding generation state unchanged: {state}")
                 
                 if state == "user_input_required":
                     notification_count += 1
-                    print(f"\n🔔 ATTENTION NEEDED ({notification_count}): Coding generation needs your input!")
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] 🔔 ATTENTION NEEDED ({notification_count}): Coding generation needs your input!")
+                    
                     # Use system beep instead of sound file
                     play_beep(1000, 1200)
+                    
                     # Now wait longer before checking again
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Waiting 10 seconds before next check due to user input required")
                     time.sleep(10)
                     
                 elif state == "done":
-                    print("\n✅ Coding generation has completed its task!")
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] ✅ Coding generation has completed its task!")
                     sound_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_done.mp3")
                     play_sound(sound_file)
                     
                     # Signal completion using the global function
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Signaling monitoring complete")
                     signal_monitoring_complete()
                     
                     # Also call the original callback if provided (for backward compatibility)
                     if completion_callback:
+                        log_time = time.strftime('%H:%M:%S')
+                        print(f"[{log_time}] Calling completion callback")
                         try:
                             completion_callback()
                         except Exception as e:
-                            print(f"Error calling callback: {str(e)}")
+                            log_time = time.strftime('%H:%M:%S')
+                            print(f"[{log_time}] Error calling callback: {str(e)}")
+                    
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Exiting monitoring loop due to completion")
                     return  # Exit the monitoring loop
                     
                 else:  # still_working
-                    time.sleep(interval)
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Still working, waiting {interval} seconds before next check")
+                    
+                    iteration_time = time.time() - iteration_start
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Iteration {screenshot_count} took {iteration_time:.2f}s total")
+                    print(f"[{log_time}] Sleeping for {interval}s")
+                    
+                    # Debug: log the exact time we're about to sleep
+                    sleep_start = time.time()
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Sleep start timestamp: {sleep_start}")
+                    
+                    # Sleep in smaller chunks so we can log progress
+                    sleep_chunks = 10
+                    chunk_duration = interval / sleep_chunks
+                    for i in range(sleep_chunks):
+                        # Sleep for one chunk
+                        time.sleep(chunk_duration)
+                        # Log progress
+                        chunk_time = time.time()
+                        log_time = time.strftime('%H:%M:%S')
+                        elapsed = chunk_time - sleep_start
+                        print(f"[{log_time}] Sleep progress: {elapsed:.1f}s / {interval}s ({(i+1)/sleep_chunks*100:.0f}%)")
+                    
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Sleep completed, resuming monitoring")
+                    
+                total_time = time.time() - loop_start_time
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] ---- Monitoring has been running for {total_time:.1f}s total ----")
                     
             except KeyboardInterrupt:
-                print("\n\nMonitoring stopped by user.")
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Monitoring stopped by user.")
+                
                 # Call the completion callback if provided
                 if completion_callback:
+                    log_time = time.strftime('%H:%M:%S')
+                    print(f"[{log_time}] Calling completion callback due to keyboard interrupt")
                     completion_callback()
                 return
                 
             except Exception as e:
-                print(f"\nError during monitoring: {e}")
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Error during monitoring: {e}")
+                
+                # Print full exception details
+                import traceback
+                print(f"[{log_time}] Traceback: {traceback.format_exc()}")
+                
+                log_time = time.strftime('%H:%M:%S')
+                print(f"[{log_time}] Waiting {interval} seconds before retrying")
                 time.sleep(interval)
                 
     except KeyboardInterrupt:
-        print("\nMonitoring stopped by user.")
+        log_time = time.strftime('%H:%M:%S')
+        print(f"[{log_time}] Monitoring stopped by user.")
+        
         # Call the completion callback if provided
         if completion_callback:
+            log_time = time.strftime('%H:%M:%S')
+            print(f"[{log_time}] Calling completion callback due to keyboard interrupt (outer)")
             completion_callback()
         return
+        
+    except Exception as e:
+        log_time = time.strftime('%H:%M:%S')
+        print(f"[{log_time}] Fatal error in monitoring: {e}")
+        
+        # Print full exception details
+        import traceback
+        print(f"[{log_time}] Traceback: {traceback.format_exc()}")
+        
+        # Call the completion callback if provided
+        if completion_callback:
+            log_time = time.strftime('%H:%M:%S')
+            print(f"[{log_time}] Calling completion callback due to fatal error")
+            completion_callback()
