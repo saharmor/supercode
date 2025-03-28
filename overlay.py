@@ -4,9 +4,17 @@ Status overlay for SuperCode application.
 Provides the visual interface for the overlay window.
 """
 
-from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtCore import Qt, QTimer, QRectF
-from PyQt5.QtGui import QPainter, QColor, QPainterPath, QFont
+try:
+    from PyQt5.QtWidgets import QApplication, QWidget
+    from PyQt5.QtCore import Qt, QTimer, QRectF
+    from PyQt5.QtGui import QPainter, QColor, QPainterPath, QFont
+except ImportError:
+    print("\n\033[1;31mError: PyQt5 module not found.\033[0m")
+    print("\033[1;33mPlease install it by running: pip install PyQt5>=5.15.6\033[0m")
+    print("\033[1;33mOr rerun the install script: ./install_and_run.sh\033[0m\n")
+    import sys
+    sys.exit(1)
+
 import sys
 import os
 import json

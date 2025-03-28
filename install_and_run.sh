@@ -98,6 +98,48 @@ if [ $? -ne 0 ]; then
 fi
 print_message "green" "✓ Dependencies installed successfully"
 
+# Verify PyQt5 installation
+print_message "blue" "Verifying PyQt5 installation..."
+python3 -c "import PyQt5" 2>/dev/null
+if [ $? -ne 0 ]; then
+  print_message "yellow" "PyQt5 not detected. Attempting specific installation..."
+  python3 -m pip install PyQt5>=5.15.6
+  
+  # Verify again
+  python3 -c "import PyQt5" 2>/dev/null
+  if [ $? -ne 0 ]; then
+    print_message "red" "Warning: PyQt5 installation may have failed."
+    print_message "yellow" "SuperCode may not run correctly without PyQt5."
+    print_message "yellow" "Press Enter to continue anyway or Ctrl+C to abort..."
+    read
+  else
+    print_message "green" "✓ PyQt5 installed successfully"
+  fi
+else
+  print_message "green" "✓ PyQt5 is properly installed"
+fi
+
+# Verify pynput installation
+print_message "blue" "Verifying pynput installation..."
+python3 -c "import pynput" 2>/dev/null
+if [ $? -ne 0 ]; then
+  print_message "yellow" "pynput not detected. Attempting specific installation..."
+  python3 -m pip install pynput>=1.7.6
+  
+  # Verify again
+  python3 -c "import pynput" 2>/dev/null
+  if [ $? -ne 0 ]; then
+    print_message "red" "Warning: pynput installation may have failed."
+    print_message "yellow" "Global keyboard shortcuts will not work without pynput."
+    print_message "yellow" "Press Enter to continue anyway or Ctrl+C to abort..."
+    read
+  else
+    print_message "green" "✓ pynput installed successfully"
+  fi
+else
+  print_message "green" "✓ pynput is properly installed"
+fi
+
 # Check for required API keys in .env file
 ENV_FILE=".env"
 EXAMPLE_ENV_FILE=".example.env"
