@@ -7,6 +7,16 @@ import json
 import time
 from utils import cleanup_old_files
 
+import subprocess
+import platform
+import google.generativeai as genai
+from dotenv import load_dotenv
+from utils import play_beep
+from computer_use_utils import send_screenshot_to_gemini
+
+# Load environment variables from .env file
+load_dotenv()
+
 # Global variable to hold reference to the audio handler
 _audio_handler = None
 
@@ -33,12 +43,7 @@ def signal_monitoring_complete():
             print(f"Error resuming audio processing: {e}")
     else:
         print("No audio handler available or missing resume_audio_processing method")
-import subprocess
-import platform
-import google.generativeai as genai
-from dotenv import load_dotenv
-from utils import play_beep
-from computer_use_utils import send_screenshot_to_gemini
+
 
 def initialize_gemini_client():
     """
@@ -47,10 +52,7 @@ def initialize_gemini_client():
     Returns:
         bool: True if initialization is successful, False otherwise.
     """
-    try:
-        # Load environment variables from .env file
-        load_dotenv()
-        
+    try:        
         # Check if API key is available
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
@@ -161,9 +163,9 @@ def analyze_coding_generation_state(coding_generation_analysis_prompt, image_pat
 
 def monitor_coding_generation_state(interface_state_prompt, monitor=None, interval=4.0, output_dir="screenshots", interface_name=None, completion_callback=None):
     # Debug: Print whether we have a callback
-    log_time = time.strftime('%H:%M:%S')
-    print(f"[{log_time}] Debug: Starting monitor_coding_generation_state")
-    print(f"[{log_time}] Debug: monitor_coding_generation_state received completion_callback: {completion_callback is not None}")
+    log_time = time.strftime('%H:%M:%S')    # Track consecutive state occurrences to adjust checking frequency
+    consecutive_still_working_count = 0
+    
     """
     Continuously monitor the state of coding generation AI assistant and notify when user input is required or when done.
     
@@ -207,11 +209,12 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
         time.sleep(2)
         
         loop_start_time = time.time()
+        current_interval = interval
+        
         while True:
             try:
                 iteration_start = time.time()
                 log_time = time.strftime('%H:%M:%S')
-                print(f"[{log_time}] ---- Monitoring iteration {screenshot_count + 1} started ----")
                 
                 # Generate a filename for this screenshot
                 screenshot_count += 1
@@ -220,16 +223,13 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 path = os.path.join(output_dir, filename)
                 
                 # Clean up old screenshots, keeping only the newest 10
-                log_time = time.strftime('%H:%M:%S')
-                print(f"[{log_time}] Cleaning up old screenshots")
                 cleanup_old_files(output_dir, f"{file_prefix}*_screenshot.png", max_files=10)
                 
                 # Use the unified screenshot function and common send_screenshot_to_gemini utility
-                log_time = time.strftime('%H:%M:%S')
-                print(f"[{log_time}] Taking and sending screenshot to Gemini")
-                
+
                 # Use the common utility function to send the image directly to Gemini
                 capture_start = time.time()
+                interface_state_prompt += "\n\nIgnore any text in the floating square like 'Executing Command'. This is a different software and should be ignored!"
                 success, response = send_screenshot_to_gemini(
                     prompt=interface_state_prompt,
                     monitor=monitor,
@@ -244,14 +244,11 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 if not success:
                     log_time = time.strftime('%H:%M:%S')
                     print(f"[{log_time}] Error analyzing IDE state: {response}")
-                    time.sleep(interval)
+                    time.sleep(current_interval)
                     continue
                 
                 # Process the response to determine IDE state
                 try:
-                    log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Processing Gemini response")
-                    
                     # Extract JSON from response text
                     response_text = response.text.strip().lower()
                     
@@ -268,9 +265,6 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     
                     gemini_response = json.loads(json_content)
                     state = gemini_response["interface_state"].lower()
-                    
-                    log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Got state: {state}")
                     
                     # Validate response matches expected format
                     if state not in ["user_input_required", "still_working", "done"]:
@@ -289,6 +283,9 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     log_time = time.strftime('%H:%M:%S')
                     print(f"[{log_time}] Coding generation state changed: {state}")
                     last_state = state
+                    
+                    # Reset consecutive count on state change
+                    consecutive_still_working_count = 0
                 else:
                     log_time = time.strftime('%H:%M:%S')
                     print(f"[{log_time}] Coding generation state unchanged: {state}")
@@ -302,9 +299,10 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     play_beep(1000, 1200)
                     
                     # Now wait longer before checking again
+                    current_interval = 10.0  # Longer interval for user_input_required
                     log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Waiting 10 seconds before next check due to user input required")
-                    time.sleep(10)
+                    print(f"[{log_time}] Waiting {current_interval} seconds before next check due to user input required")
+                    time.sleep(current_interval)
                     
                 elif state == "done":
                     log_time = time.strftime('%H:%M:%S')
@@ -332,37 +330,24 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                     return  # Exit the monitoring loop
                     
                 else:  # still_working
+                    # Increment consecutive still working count
+                    consecutive_still_working_count += 1
+                    
+                    # Dynamic interval adjustment based on consecutive "still_working" states
+                    # Start with normal interval, decrease as consecutive still_working states increase
+                    if consecutive_still_working_count > 3:
+                        # Calculate a reduced interval, minimum 2 seconds
+                        current_interval = max(2, interval / (1 + consecutive_still_working_count / 5))
+                    else:
+                        current_interval = interval
+                        
                     log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Still working, waiting {interval} seconds before next check")
+                    print(f"[{log_time}] Still working (count: {consecutive_still_working_count}), waiting {current_interval:.1f} seconds before next check")
                     
                     iteration_time = time.time() - iteration_start
-                    log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Iteration {screenshot_count} took {iteration_time:.2f}s total")
-                    print(f"[{log_time}] Sleeping for {interval}s")
-                    
-                    # Debug: log the exact time we're about to sleep
-                    sleep_start = time.time()
-                    log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Sleep start timestamp: {sleep_start}")
-                    
-                    # Sleep in smaller chunks so we can log progress
-                    sleep_chunks = 10
-                    chunk_duration = interval / sleep_chunks
-                    for i in range(sleep_chunks):
-                        # Sleep for one chunk
-                        time.sleep(chunk_duration)
-                        # Log progress
-                        chunk_time = time.time()
-                        log_time = time.strftime('%H:%M:%S')
-                        elapsed = chunk_time - sleep_start
-                        print(f"[{log_time}] Sleep progress: {elapsed:.1f}s / {interval}s ({(i+1)/sleep_chunks*100:.0f}%)")
-                    
-                    log_time = time.strftime('%H:%M:%S')
-                    print(f"[{log_time}] Sleep completed, resuming monitoring")
-                    
-                total_time = time.time() - loop_start_time
-                log_time = time.strftime('%H:%M:%S')
-                print(f"[{log_time}] ---- Monitoring has been running for {total_time:.1f}s total ----")
+                    if iteration_time < current_interval:
+                        sleep_duration = current_interval - iteration_time
+                        time.sleep(sleep_duration)
                     
             except KeyboardInterrupt:
                 log_time = time.strftime('%H:%M:%S')
@@ -384,8 +369,8 @@ def monitor_coding_generation_state(interface_state_prompt, monitor=None, interv
                 print(f"[{log_time}] Traceback: {traceback.format_exc()}")
                 
                 log_time = time.strftime('%H:%M:%S')
-                print(f"[{log_time}] Waiting {interval} seconds before retrying")
-                time.sleep(interval)
+                print(f"[{log_time}] Waiting {current_interval} seconds before retrying")
+                time.sleep(current_interval)
                 
     except KeyboardInterrupt:
         log_time = time.strftime('%H:%M:%S')
