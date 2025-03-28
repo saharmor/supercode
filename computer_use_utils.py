@@ -337,25 +337,46 @@ def test_bring_to_front_window():
     
 
 def get_current_window_name():
+    """Get the name of the currently active window, with robust error handling."""
     script = '''
-    tell application "System Events"
-        set frontProcess to first process whose frontmost is true
-        set processName to name of frontProcess
-    end tell
-
-    if processName is "Google Chrome" then
-        tell application "Google Chrome"
-            return title of active tab of front window
-        end tell
-    else
+    try
         tell application "System Events"
-            return name of front window of frontProcess
+            set frontProcess to first process whose frontmost is true
+            set processName to name of frontProcess
         end tell
-    end if
+
+        if processName is "Google Chrome" then
+            tell application "Google Chrome"
+                if (count of windows) > 0 then
+                    return title of active tab of front window
+                else
+                    return "Google Chrome"
+                end if
+            end tell
+        else
+            tell application "System Events"
+                if exists front window of frontProcess then
+                    return name of front window of frontProcess
+                else
+                    return processName
+                end if
+            end tell
+        end if
+    on error errorMessage
+        return "Unknown"
+    end try
     '''
-    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-    window_name = result.stdout.strip()
-    return window_name
+    
+    try:
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            print(f"Warning: AppleScript error when getting window name: {result.stderr.strip()}")
+            # Return a fallback window name instead of raising an exception
+            return "Unknown Window"
+        return result.stdout.strip()
+    except Exception as e:
+        print(f"Error getting current window name: {e}")
+        return "Unknown Window"
 
 
 def get_active_window_monitor():
