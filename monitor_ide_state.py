@@ -54,9 +54,9 @@ def initialize_gemini_client():
     """
     try:        
         # Check if API key is available
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            print("Error: GOOGLE_API_KEY environment variable not found.")
+            print("Error: GEMINI_API_KEY environment variable not found.")
             print("Please set it in your .env file or environment.")
             return False
         

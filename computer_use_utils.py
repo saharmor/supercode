@@ -426,9 +426,9 @@ def send_screenshot_to_gemini(prompt, monitor=None, temp_file=None, resize_width
                or (False, error_str) if an error occurred
     """
     try:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            error_msg = "Error: GEMINI_API_KEY or GOOGLE_API_KEY environment variable not found."
+            error_msg = "Error: GEMINI_API_KEY environment variable not found."
             print(error_msg)
             return False, error_msg
         

@@ -239,8 +239,7 @@ class CommandProcessor:
                 pyautogui.moveTo(coords[0], coords[1])
                 pyautogui.click(button="left")
                 pyautogui.write(prompt)
-                # Commented out to avoid auto-sending to chatbot
-                # pyautogui.press("enter")
+                pyautogui.press("enter")
             else:
                 print(f"Error: No coordinates found for {command_type} in {self.current_interface} interface")
                 play_beep(1200, 1000)
