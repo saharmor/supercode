@@ -246,7 +246,7 @@ class SuperCodeApp(rumps.App):
                 rumps.notification("SuperCode", "Error", error_message)
                 
                 # Additional info via say command
-                os.system(f"say 'Error: {error_message}. Use Command Option L shortcut after fixing.'")
+                os.system(f"say 'Error: {error_message}. Close and re-run SuperCode once the IDE is open and focused.'")
                 
                 # Find the "Stop Listening" menu item and update it back to "Start Listening"
                 for item in self.menu:
